@@ -54,6 +54,9 @@ type providerModel struct {
 // providerData is handed to resources and data sources.
 type providerData struct {
 	client *client.Client
+	// username is the login user, which edgeos_system_login_user refuses
+	// to delete by default.
+	username string
 }
 
 func (p *edgeosProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -237,7 +240,7 @@ func (p *edgeosProvider) Configure(ctx context.Context, req provider.ConfigureRe
 		resp.Diagnostics.AddError("Invalid EdgeOS connection settings", err.Error())
 		return
 	}
-	data := &providerData{client: client.New(tr)}
+	data := &providerData{client: client.New(tr), username: username}
 	resp.ResourceData = data
 	resp.DataSourceData = data
 }
@@ -267,6 +270,10 @@ func (p *edgeosProvider) Resources(_ context.Context) []func() resource.Resource
 		newPortForwardSettingsResource(),
 		newStaticRouteResource(),
 		newStaticInterfaceRouteResource(),
+		newInterfaceEthernetResource(),
+		newInterfaceVifResource(),
+		newSystemResource(),
+		newLoginUserResource,
 	}
 }
 

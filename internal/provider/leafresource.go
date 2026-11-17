@@ -33,6 +33,9 @@ import (
 //     the owned leaves (system settings, port-forward settings).
 //   - With MustExist, the node has to exist already (physical interfaces);
 //     it implies Adopt.
+//   - Owned extends ownership to nodes ToLeaves does not produce (a flag
+//     configured as false, every NTP server), and Reset makes Delete write a
+//     default instead of deleting a leaf the node cannot be without.
 type leafSpec[M any] struct {
 	// Name is the type name without the provider prefix, e.g. "firewall_name".
 	Name   string
@@ -59,6 +62,17 @@ type leafSpec[M any] struct {
 	MustExist bool
 	// Validate runs extra plan-time checks across attributes.
 	Validate func(ctx context.Context, m *M, diags *diag.Diagnostics)
+	// Owned lists nodes the resource owns although ToLeaves may have no leaf
+	// for them, relative to Path. Create and Update delete them from the
+	// device unless ToLeaves sets them, and Delete removes them. A path that
+	// ends in "*" stands for every tag instance below its parent, so a
+	// resource can own a whole list of tags (all NTP servers). Typical use:
+	// a valueless node configured as false on an adopted node.
+	Owned func(m *M) []configtree.Path
+	// Reset returns values that Delete writes instead of deleting an owned
+	// leaf, for leaves the node must always carry (duplex and speed of a
+	// physical port). Only used with Adopt or MustExist.
+	Reset func(m *M) configtree.Leaves
 }
 
 type resourceFactory = func() resource.Resource
@@ -134,6 +148,27 @@ func ownedOnDevice(device configtree.Leaves, keys ...configtree.Leaves) configtr
 	return out
 }
 
+// ownedKeys expands the Owned paths of m against the device leaves.
+func (r *leafResource[M]) ownedKeys(device configtree.Leaves, m *M) configtree.Leaves {
+	out := configtree.NewLeaves()
+	if r.spec.Owned == nil {
+		return out
+	}
+	for _, p := range r.spec.Owned(m) {
+		if p.Last() != "*" {
+			out.SetFlag(p)
+			continue
+		}
+		parent := p.Parent()
+		for _, dp := range device.Paths() {
+			if len(dp) > len(parent) && dp.HasPrefix(parent) {
+				out.SetFlag(parent.Child(dp[len(parent)]))
+			}
+		}
+	}
+	return out
+}
+
 func (r *leafResource[M]) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan M
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -162,7 +197,11 @@ func (r *leafResource[M]) Create(ctx context.Context, req resource.CreateRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	b := configtree.Diff(base, ownedOnDevice(device, desired), desired)
+	b := configtree.Diff(base, ownedOnDevice(device, desired, r.ownedKeys(device, &plan)), desired)
+	if !exists && b.Empty() {
+		// A tag instance without settings, such as a bare VLAN interface.
+		b.Set(base, configtree.Flag())
+	}
 	if !r.apply(ctx, base, b, &resp.Diagnostics) {
 		return
 	}
@@ -211,7 +250,7 @@ func (r *leafResource[M]) Update(ctx context.Context, req resource.UpdateRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	b := configtree.Diff(base, ownedOnDevice(device, prior, desired), desired)
+	b := configtree.Diff(base, ownedOnDevice(device, prior, desired, r.ownedKeys(device, &state), r.ownedKeys(device, &plan)), desired)
 	if !r.apply(ctx, base, b, &resp.Diagnostics) {
 		return
 	}
@@ -240,8 +279,18 @@ func (r *leafResource[M]) Delete(ctx context.Context, req resource.DeleteRequest
 	}
 	b := configtree.NewBatch()
 	if r.spec.Adopt || r.spec.MustExist {
-		owned := ownedOnDevice(device, r.spec.ToLeaves(ctx, &state, &resp.Diagnostics))
+		owned := ownedOnDevice(device, r.spec.ToLeaves(ctx, &state, &resp.Diagnostics), r.ownedKeys(device, &state))
+		reset := configtree.NewLeaves()
+		if r.spec.Reset != nil {
+			reset = r.spec.Reset(&state)
+		}
 		for _, p := range owned.Paths() {
+			if v, ok := reset.Get(p); ok {
+				if cur, _ := owned.Get(p); !cur.Equal(v) {
+					b.Set(base.Child(p...), v)
+				}
+				continue
+			}
 			b.Delete(base.Child(p...))
 		}
 	} else {
