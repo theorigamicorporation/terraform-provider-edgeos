@@ -1,0 +1,16 @@
+schema: spec-driven
+
+context: |
+  Terraform/OpenTofu provider for Ubiquiti EdgeOS (EdgeRouter), written in Go
+  with the Terraform Plugin Framework (protocol v6). One binary and one set of
+  release assets serve both Terraform and OpenTofu.
+  The primary transport is the EdgeOS web UI API (get.json, partial.json,
+  batch.json). Writes are tested against an in-memory fake EdgeOS API server.
+  Developer entry point is the justfile. Containers, if any, use rootless podman.
+  Fixtures and examples only use RFC 5737 / RFC 1918 example addresses.
+
+rules:
+  proposal:
+    - Say why the change is needed before what it changes
+  tasks:
+    - Keep tasks small enough to verify with a unit or acceptance test

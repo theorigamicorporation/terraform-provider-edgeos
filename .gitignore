@@ -1,0 +1,33 @@
+# Binaries
+/terraform-provider-edgeos
+/fake-edgeos
+/bin/
+/dist/
+
+# Test and coverage output
+coverage.out
+coverage.html
+*.test
+
+# Terraform / OpenTofu working files from trying the examples
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!examples/**/*.tfvars.example
+
+# Local overrides and secrets
+.env
+*.env
+.terraformrc
+.tofurc
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Parallel work trees
+/.worktrees/
