@@ -246,7 +246,7 @@ func TestAccSystemValidation(t *testing.T) {
 		`host_name = "gw01.example.net"`:                  `host name of up to 63`,
 		`host_name = "-gw"`:                               `host name of up to 63`,
 		`domain_name = "example..net"`:                    `domain name such as`,
-		`time_zone = "Europe/Amsterdam \"x\""`:                `double quote`,
+		`time_zone = "Europe/Amsterdam \"x\""`:            `double quote`,
 		`name_servers = ["192.0.2.53", "192.0.2.53"]`:     `Duplicate List Value`,
 		`name_servers = ["dns.example.net"]`:              `Invalid IP address`,
 		`name_servers = []`:                               `at least 1`,
