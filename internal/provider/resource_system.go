@@ -84,11 +84,11 @@ func systemSchema() schema.Schema {
 				},
 			},
 			"time_zone": schema.StringAttribute{
-				MarkdownDescription: "Time zone name from the tz database, such as `UTC` or `Europe/Sofia`.",
+				MarkdownDescription: "Time zone name from the tz database, such as `UTC` or `Europe/Amsterdam`.",
 				Optional:            true,
 				Validators: []validator.String{
 					edgeosValue(),
-					stringvalidator.RegexMatches(timeZoneRE, "must be a time zone name such as UTC or Europe/Sofia"),
+					stringvalidator.RegexMatches(timeZoneRE, "must be a time zone name such as UTC or Europe/Amsterdam"),
 				},
 			},
 			"name_servers": schema.ListAttribute{

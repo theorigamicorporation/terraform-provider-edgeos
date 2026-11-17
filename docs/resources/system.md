@@ -22,7 +22,7 @@ Destroying the resource deletes the settings it manages and leaves everything el
 resource "edgeos_system" "this" {
   host_name    = "gw01"
   domain_name  = "example.net"
-  time_zone    = "Europe/Sofia"
+  time_zone    = "Europe/Amsterdam"
   name_servers = ["192.0.2.53", "198.51.100.53"]
   ntp_servers  = ["0.ubnt.pool.ntp.org", "192.0.2.123"]
 }
@@ -37,7 +37,7 @@ resource "edgeos_system" "this" {
 - `host_name` (String) Host name of the router, a single DNS label such as `gw01`.
 - `name_servers` (List of String) DNS servers the router itself uses, in order of preference.
 - `ntp_servers` (Set of String) NTP servers (`system ntp server <name>`), host names or addresses. The resource owns the whole list: servers that are not in it are removed, including their options. Options such as `prefer` on a server that stays in the list are kept.
-- `time_zone` (String) Time zone name from the tz database, such as `UTC` or `Europe/Sofia`.
+- `time_zone` (String) Time zone name from the tz database, such as `UTC` or `Europe/Amsterdam`.
 
 ### Read-Only
 

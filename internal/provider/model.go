@@ -207,15 +207,6 @@ func stringSet(vals []string) types.Set {
 	return types.SetValueMust(types.StringType, elems)
 }
 
-// keepIfNull returns prior when the router reports nothing, so attributes the
-// router never returns (write-only secrets) keep their configured value.
-func keepIfNull(fromDevice, prior types.String) types.String {
-	if fromDevice.IsNull() {
-		return prior
-	}
-	return fromDevice
-}
-
 // hasAny reports whether any of the named children exist below tree.
 func hasAny(tree any, names ...string) bool {
 	for _, n := range names {

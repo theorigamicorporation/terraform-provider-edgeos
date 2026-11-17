@@ -274,6 +274,10 @@ func (p *edgeosProvider) Resources(_ context.Context) []func() resource.Resource
 		newInterfaceVifResource(),
 		newSystemResource(),
 		newLoginUserResource,
+		newDHCPSharedNetworkResource(),
+		newDHCPStaticMappingResource(),
+		newWireguardInterfaceResource(),
+		newWireguardPeerResource(),
 	}
 }
 

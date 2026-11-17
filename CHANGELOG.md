@@ -19,5 +19,10 @@ First release.
 - NAT and routing resources: `edgeos_nat_rule`, `edgeos_port_forward`,
   `edgeos_port_forward_settings`, `edgeos_static_route`,
   `edgeos_static_interface_route`.
+- Interface and system resources: `edgeos_interface_ethernet`,
+  `edgeos_interface_vif`, `edgeos_system` and `edgeos_system_login_user`.
+- DHCP server resources: `edgeos_dhcp_shared_network` and `edgeos_dhcp_static_mapping`.
+- WireGuard resources: `edgeos_wireguard_interface` (with the public key derived
+  from an inline private key) and `edgeos_wireguard_peer`.
 - Data sources: `edgeos_config`, `edgeos_system_info`.
 - Fake EdgeOS API server for tests and for trying the examples locally.

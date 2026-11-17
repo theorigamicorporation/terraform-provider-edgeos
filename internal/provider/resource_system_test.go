@@ -31,7 +31,7 @@ func TestSystemMapping(t *testing.T) {
 	full := systemModel{
 		HostName:    types.StringValue("gw01"),
 		DomainName:  types.StringValue("example.net"),
-		TimeZone:    types.StringValue("Europe/Sofia"),
+		TimeZone:    types.StringValue("Europe/Amsterdam"),
 		NameServers: stringList([]string{"198.51.100.53", "192.0.2.53", "2001:db8::53"}),
 		NTPServers:  stringSet([]string{"192.0.2.123", "ntp.example.net"}),
 	}
@@ -44,7 +44,7 @@ func TestSystemMapping(t *testing.T) {
 		{"everything", full, map[string]configtree.Value{
 			"host-name":                  configtree.Single("gw01"),
 			"domain-name":                configtree.Single("example.net"),
-			"time-zone":                  configtree.Single("Europe/Sofia"),
+			"time-zone":                  configtree.Single("Europe/Amsterdam"),
 			"name-server":                configtree.Multi("198.51.100.53", "192.0.2.53", "2001:db8::53"),
 			"ntp server 192.0.2.123":     configtree.Flag(),
 			"ntp server ntp.example.net": configtree.Flag(),
@@ -131,7 +131,7 @@ const systemConfig = `
 resource "edgeos_system" "this" {
   host_name    = "gw01"
   domain_name  = "example.net"
-  time_zone    = "Europe/Sofia"
+  time_zone    = "Europe/Amsterdam"
   name_servers = ["198.51.100.53", "192.0.2.53"]
   ntp_servers  = ["0.ubnt.pool.ntp.org", "192.0.2.123"]
 }`
@@ -157,7 +157,7 @@ func TestAccSystem(t *testing.T) {
 					resource.TestCheckResourceAttr("edgeos_system.this", "name_servers.0", "198.51.100.53"),
 					e.checkValue("system host-name", "gw01"),
 					e.checkValue("system domain-name", "example.net"),
-					e.checkValue("system time-zone", "Europe/Sofia"),
+					e.checkValue("system time-zone", "Europe/Amsterdam"),
 					e.checkValue("system name-server", []string{"198.51.100.53", "192.0.2.53"}),
 					e.checkValue("system ntp server", map[string]any{
 						"0.ubnt.pool.ntp.org": map[string]any{"prefer": nil},
@@ -171,7 +171,7 @@ func TestAccSystem(t *testing.T) {
 				Config: e.config(`
 resource "edgeos_system" "this" {
   host_name    = "gw02"
-  time_zone    = "Europe/Sofia"
+  time_zone    = "Europe/Amsterdam"
   name_servers = ["192.0.2.53", "198.51.100.53"]
   ntp_servers  = ["192.0.2.123"]
 }`),
@@ -201,7 +201,7 @@ resource "edgeos_system" "this" {
 				Config: e.config(`
 resource "edgeos_system" "this" {
   host_name    = "gw02"
-  time_zone    = "Europe/Sofia"
+  time_zone    = "Europe/Amsterdam"
   name_servers = ["192.0.2.53", "198.51.100.53"]
   ntp_servers  = ["192.0.2.123"]
 }`),
@@ -246,7 +246,7 @@ func TestAccSystemValidation(t *testing.T) {
 		`host_name = "gw01.example.net"`:                  `host name of up to 63`,
 		`host_name = "-gw"`:                               `host name of up to 63`,
 		`domain_name = "example..net"`:                    `domain name such as`,
-		`time_zone = "Europe/Sofia \"x\""`:                `double quote`,
+		`time_zone = "Europe/Amsterdam \"x\""`:                `double quote`,
 		`name_servers = ["192.0.2.53", "192.0.2.53"]`:     `Duplicate List Value`,
 		`name_servers = ["dns.example.net"]`:              `Invalid IP address`,
 		`name_servers = []`:                               `at least 1`,
