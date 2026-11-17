@@ -4,7 +4,7 @@ page_title: "edgeos_system_login_user Resource - edgeos"
 subcategory: ""
 description: |-
   A local login user (system login user <name>).
-  The password is write only: Terraform sends plaintext_password to the router, EdgeOS stores only a hash (encrypted_password) and blanks the plaintext on commit. The configured password is kept in the Terraform state, so protect the state. When the hash on the router changes outside Terraform, the next plan sets the configured password again.
+  plaintext_password is a write-only attribute: Terraform sends it to the router and never stores it in the state. EdgeOS stores only a hash (encrypted_password) and blanks the plaintext on commit. Every plan checks the configured password against that hash and plans an update only when it no longer matches, so a password changed outside Terraform is set again, and an imported user whose password is already right is left alone. Instead of a password you can configure encrypted_password directly, or leave both out on an imported user to keep the password it has.
   Options this resource does not model, such as SSH keys below authentication public-keys, are left alone on update; manage keys with edgeos_system_login_user_public_key. Destroying the resource deletes the whole user, SSH keys included.
   The user the provider logs in as is protected: destroying it only removes it from the Terraform state and leaves it on the router, unless allow_destroy_provider_user = true. Changing its level to operator takes away the configuration rights the provider needs.
 ---
@@ -13,11 +13,15 @@ description: |-
 
 A local login user (`system login user <name>`).
 
-The password is write only: Terraform sends `plaintext_password` to the router, EdgeOS stores only a hash (`encrypted_password`) and blanks the plaintext on commit. The configured password is kept in the Terraform state, so protect the state. When the hash on the router changes outside Terraform, the next plan sets the configured password again.
+`plaintext_password` is a write-only attribute: Terraform sends it to the router and never stores it in the state. EdgeOS stores only a hash (`encrypted_password`) and blanks the plaintext on commit. Every plan checks the configured password against that hash and plans an update only when it no longer matches, so a password changed outside Terraform is set again, and an imported user whose password is already right is left alone. Instead of a password you can configure `encrypted_password` directly, or leave both out on an imported user to keep the password it has.
 
 Options this resource does not model, such as SSH keys below `authentication public-keys`, are left alone on update; manage keys with `edgeos_system_login_user_public_key`. Destroying the resource deletes the whole user, SSH keys included.
 
 The user the provider logs in as is protected: destroying it only removes it from the Terraform state and leaves it on the router, unless `allow_destroy_provider_user = true`. Changing its `level` to `operator` takes away the configuration rights the provider needs.
+
+As a [write-only attribute](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments),
+`plaintext_password` can also come from an `ephemeral` variable or an
+ephemeral resource.
 
 ## Example Usage
 
@@ -41,17 +45,19 @@ resource "edgeos_system_login_user" "alice" {
 ### Required
 
 - `name` (String) User name: lower case letters, digits, `_` and `-`, starting with a letter or `_`, up to 32 characters. Changing it creates a new user.
-- `plaintext_password` (String, Sensitive) Password of the user. EdgeOS 3.x requires at least one character that is not a letter or a digit. It is never read back from the router.
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `allow_destroy_provider_user` (Boolean) Let destroy delete this user even when the provider logs in as it. Defaults to `false`.
+- `encrypted_password` (String, Sensitive) Password hash (crypt(3), `$6$...` on EdgeOS). Read from the router; set it to give the user a hash instead of `plaintext_password`. When neither is configured, an existing user keeps the password it has.
 - `full_name` (String) Full name of the user.
 - `level` (String) `admin` (full access) or `operator` (read only). Defaults to `admin`.
+- `plaintext_password` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Password of the user. Write only: it is sent to the router but never stored in the Terraform state, and EdgeOS keeps only its hash. EdgeOS 3.x requires at least one character that is not a letter or a digit. Each plan checks it against `encrypted_password` and only sends it when it does not match. Conflicts with `encrypted_password`; a new user needs one of the two.
 
 ### Read-Only
 
-- `encrypted_password` (String, Sensitive) Password hash the router stores, read from the router.
 - `id` (String) The user name.
 
 ## Import
@@ -65,6 +71,13 @@ import {
   to = edgeos_system_login_user.example
   id = "alice"
 }
+
+# The password the user already has on the router. It is checked against
+# the hash, so the plan after the import is empty when it is right.
+resource "edgeos_system_login_user" "example" {
+  name               = "alice"
+  plaintext_password = var.alice_password
+}
 ```
 
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
@@ -72,3 +85,17 @@ The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/c
 ```shell
 terraform import edgeos_system_login_user.example 'alice'
 ```
+
+The router only has the hash of the password, so the import cannot fill in
+`plaintext_password`. What happens on the first plan depends on the config:
+
+- `plaintext_password` set to the password the user already has: the
+  provider checks it against the hash (`$6$` and `$5$` crypt hashes) and the
+  plan is empty. A different password is planned as an update that sets it.
+- `encrypted_password` set to the hash from the router (`show configuration
+  commands | match encrypted-password`): the plan is empty, and the hash is
+  written as is if you change it later.
+- Neither: the user keeps the password it has. A config generated with
+  `terraform plan -generate-config-out` or `tofu plan -generate-config-out`
+  has neither, so it plans nothing. Set one of the two later to manage the
+  password.

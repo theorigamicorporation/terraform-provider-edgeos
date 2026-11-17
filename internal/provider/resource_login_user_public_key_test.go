@@ -147,7 +147,7 @@ func TestAccLoginUserPublicKey(t *testing.T) {
 					e.checkValue(keys+" alice@laptop", map[string]any{
 						"type": "ssh-rsa", "key": testRSAKey, "options": "no-agent-forwarding,no-port-forwarding",
 					}),
-					e.checkValue("system login user alice authentication encrypted-password", "$6$fake$"+fakeHash("correct-horse")),
+					e.checkValue("system login user alice authentication encrypted-password", fakeHash("correct-horse")),
 				),
 			},
 			{

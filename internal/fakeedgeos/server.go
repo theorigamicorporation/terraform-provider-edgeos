@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/theorigamicorporation/terraform-provider-edgeos/internal/configtree"
+	"github.com/theorigamicorporation/terraform-provider-edgeos/internal/shacrypt"
 )
 
 // Options configures a fake server.
@@ -98,6 +99,14 @@ func New(opts Options) *Server {
 	return &Server{opts: opts, tree: tree, sessions: map[string]string{}}
 }
 
+// FakeSalt is the salt the fake uses for every password hash, so tests can
+// predict the hash. A real router picks a random salt.
+const FakeSalt = "fakesalt"
+
+// HashPassword returns the hash the fake stores for a password: a real
+// SHA-512 crypt(3) hash, as EdgeOS stores, with FakeSalt.
+func HashPassword(pw string) string { return shacrypt.Crypt512(pw, FakeSalt, 0) }
+
 // DefaultTree is a factory-like config with five ethernet ports, built only
 // from documentation addresses.
 func DefaultTree() map[string]any {
@@ -134,7 +143,7 @@ func DefaultTree() map[string]any {
 		"system": map[string]any{
 			"host-name": "ubnt",
 			"login": map[string]any{"user": map[string]any{DefaultUsername: map[string]any{
-				"authentication": map[string]any{"encrypted-password": "$6$fake$notarealhash", "plaintext-password": ""},
+				"authentication": map[string]any{"encrypted-password": HashPassword(DefaultPassword), "plaintext-password": ""},
 				"level":          "admin",
 			}}},
 			"ntp": map[string]any{"server": map[string]any{

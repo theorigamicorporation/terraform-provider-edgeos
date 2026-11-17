@@ -324,7 +324,7 @@ func postCommit(tree map[string]any) {
 			continue
 		}
 		if pw, _ := m["plaintext-password"].(string); pw != "" {
-			m["encrypted-password"] = "$6$fake$" + fmt.Sprintf("%x", len(pw)*7919)
+			m["encrypted-password"] = HashPassword(pw)
 			m["plaintext-password"] = ""
 		}
 	}

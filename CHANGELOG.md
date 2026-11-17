@@ -49,6 +49,16 @@ First release.
   a hint to write strings as hex.
 - `import` block examples (`import-by-string-id.tf`) on every resource page.
 
+### Changed
+
+- `edgeos_system_login_user`: `plaintext_password` is now an optional
+  write-only attribute and no longer stored in the state (the state upgrade
+  drops it). Plans check it against the router's `$6$`/`$5$` hash, so an
+  imported user with the right password plans nothing instead of an update
+  that rewrites the password. `encrypted_password` can be set instead, and
+  with neither set an imported user keeps its password, which makes the
+  config from `-generate-config-out` valid.
+
 ### Fixed
 
 - `edgeos_wireguard_interface.private_key` and `edgeos_wireguard_peer.preshared_key`

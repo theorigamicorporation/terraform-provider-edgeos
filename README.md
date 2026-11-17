@@ -459,8 +459,10 @@ the web UI is disabled, and for committing without saving.
 
 The provider password is only sent to the router's login form over HTTPS and
 is never logged. Login user passwords (`edgeos_system_login_user`) are
-write-only: they are sent when created or changed, EdgeOS keeps a hash, and the
-hash is used to detect changes made elsewhere. WireGuard keys can be given
+write-only: they are never stored in the state, EdgeOS keeps a hash, and every
+plan checks the configured password against that hash, so a change made
+elsewhere is set back and an imported user with the right password plans
+nothing. WireGuard keys can be given
 inline, in which case they are stored in your state (marked sensitive), or as
 a path such as `/config/auth/wg0.key` to a file you create on the router, which
 keeps the key off your machine. Protect your state either way.

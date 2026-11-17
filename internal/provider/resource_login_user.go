@@ -19,15 +19,19 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/theorigamicorporation/terraform-provider-edgeos/internal/configtree"
+	"github.com/theorigamicorporation/terraform-provider-edgeos/internal/shacrypt"
 )
 
 var (
 	userNameRE    = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 	nonAlnumRE    = regexp.MustCompile(`[^A-Za-z0-9]`)
+	cryptHashRE   = regexp.MustCompile(`^\$[0-9a-z]+\$\S+$`)
 	attrPlaintext = path.Root("plaintext_password")
+	attrHash      = path.Root("encrypted_password")
 )
 
 type loginUserModel struct {
@@ -40,37 +44,69 @@ type loginUserModel struct {
 	AllowDestroyProviderUser types.Bool   `tfsdk:"allow_destroy_provider_user"`
 }
 
-// hashFollowsPassword keeps the known hash in the plan unless the password
-// changes, in which case the router computes a new one.
-type hashFollowsPassword struct{}
+// passwordHash plans encrypted_password. A configured hash is used as is.
+// Otherwise the hash the router has is kept while the configured
+// plaintext_password still matches it, so neither an import nor a refresh
+// rewrites a password that is already right. When it does not match, the
+// hash becomes unknown and the update sends the password.
+type passwordHash struct{}
 
-func (hashFollowsPassword) Description(context.Context) string {
-	return "keeps the hash unless plaintext_password changes"
+func (passwordHash) Description(context.Context) string {
+	return "keeps the router's hash while plaintext_password matches it"
 }
 
-func (m hashFollowsPassword) MarkdownDescription(ctx context.Context) string {
+func (m passwordHash) MarkdownDescription(ctx context.Context) string {
 	return m.Description(ctx)
 }
 
-func (hashFollowsPassword) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
-	if req.StateValue.IsNull() || req.Plan.Raw.IsNull() || !req.PlanValue.IsUnknown() {
+func (passwordHash) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	if req.Plan.Raw.IsNull() || !req.ConfigValue.IsNull() {
 		return
 	}
-	var planned, prior types.String
-	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, attrPlaintext, &planned)...)
-	resp.Diagnostics.Append(req.State.GetAttribute(ctx, attrPlaintext, &prior)...)
-	if planned.Equal(prior) {
-		resp.PlanValue = req.StateValue
+	var pw types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, attrPlaintext, &pw)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
+	if req.State.Raw.IsNull() {
+		if pw.IsNull() {
+			resp.Diagnostics.AddAttributeError(attrPlaintext, "Missing password",
+				"A new login user needs plaintext_password or encrypted_password.")
+		}
+		return
+	}
+	switch {
+	case pw.IsNull():
+		// The password is not managed: keep whatever the router has.
+		resp.PlanValue = req.StateValue
+	case !pw.IsUnknown() && passwordMatches(pw.ValueString(), req.StateValue):
+		resp.PlanValue = req.StateValue
+	default:
+		resp.PlanValue = types.StringUnknown()
+	}
+}
+
+// passwordMatches reports whether pw hashes to the crypt(3) hash h. Hashes
+// it cannot check (not $5$ or $6$) never match, so the password is set again
+// and the router stores a hash that can be checked next time.
+func passwordMatches(pw string, h types.String) bool {
+	if !known(h) {
+		return false
+	}
+	ok, err := shacrypt.Verify(pw, h.ValueString())
+	return err == nil && ok
 }
 
 func loginUserSchema() schema.Schema {
 	return schema.Schema{
+		Version: 1,
 		MarkdownDescription: "A local login user (`system login user <name>`).\n\n" +
-			"The password is write only: Terraform sends `plaintext_password` to the router, EdgeOS stores only a " +
-			"hash (`encrypted_password`) and blanks the plaintext on commit. The configured password is kept in the " +
-			"Terraform state, so protect the state. When the hash on the router changes outside Terraform, the next " +
-			"plan sets the configured password again.\n\n" +
+			"`plaintext_password` is a write-only attribute: Terraform sends it to the router and never stores it in " +
+			"the state. EdgeOS stores only a hash (`encrypted_password`) and blanks the plaintext on commit. Every plan " +
+			"checks the configured password against that hash and plans an update only when it no longer matches, " +
+			"so a password changed outside Terraform is set again, and an imported user whose password is already " +
+			"right is left alone. Instead of a password you can configure `encrypted_password` directly, or leave " +
+			"both out on an imported user to keep the password it has.\n\n" +
 			"Options this resource does not model, such as SSH keys below `authentication public-keys`, are left " +
 			"alone on update; manage keys with `edgeos_system_login_user_public_key`. Destroying the resource " +
 			"deletes the whole user, SSH keys included.\n\n" +
@@ -98,21 +134,29 @@ func loginUserSchema() schema.Schema {
 				Validators:          []validator.String{edgeosValue(), stringvalidator.LengthBetween(1, 255)},
 			},
 			"plaintext_password": schema.StringAttribute{
-				MarkdownDescription: "Password of the user. EdgeOS 3.x requires at least one character that is not a letter or a digit. " +
-					"It is never read back from the router.",
-				Required:  true,
+				MarkdownDescription: "Password of the user. Write only: it is sent to the router but never stored in the Terraform " +
+					"state, and EdgeOS keeps only its hash. EdgeOS 3.x requires at least one character that is not a letter " +
+					"or a digit. Each plan checks it against `encrypted_password` and only sends it when it does not match. " +
+					"Conflicts with `encrypted_password`; a new user needs one of the two.",
+				Optional:  true,
 				Sensitive: true,
+				WriteOnly: true,
 				Validators: []validator.String{
 					edgeosValue(),
 					stringvalidator.LengthAtLeast(1),
 					stringvalidator.RegexMatches(nonAlnumRE, "must contain at least one character that is not a letter or a digit"),
+					stringvalidator.ConflictsWith(path.MatchRoot("encrypted_password")),
 				},
 			},
 			"encrypted_password": schema.StringAttribute{
-				MarkdownDescription: "Password hash the router stores, read from the router.",
-				Computed:            true,
-				Sensitive:           true,
-				PlanModifiers:       []planmodifier.String{hashFollowsPassword{}},
+				MarkdownDescription: "Password hash (crypt(3), `$6$...` on EdgeOS). Read from the router; set it to give the " +
+					"user a hash instead of `plaintext_password`. When neither is configured, an existing user keeps the " +
+					"password it has.",
+				Optional:      true,
+				Computed:      true,
+				Sensitive:     true,
+				Validators:    []validator.String{edgeosValue(), stringvalidator.RegexMatches(cryptHashRE, "must be a crypt(3) hash such as $6$salt$hash")},
+				PlanModifiers: []planmodifier.String{passwordHash{}},
 			},
 			"allow_destroy_provider_user": schema.BoolAttribute{
 				MarkdownDescription: "Let destroy delete this user even when the provider logs in as it. Defaults to `false`.",
@@ -128,11 +172,14 @@ func loginUserToLeaves(_ context.Context, m *loginUserModel, _ *diag.Diagnostics
 	l := configtree.NewLeaves()
 	putString(l, m.Level, "level")
 	putString(l, m.FullName, "full-name")
-	// The hash is unknown exactly when the password is new or changed (see
-	// hashFollowsPassword). Otherwise the password is left out, so an update
-	// never compares it with the blank plaintext-password the router keeps.
+	// The hash is unknown exactly when the password has to be sent (see
+	// passwordHash); Create and Update copy it from the config. Otherwise the
+	// hash is owned instead, and the blank plaintext-password the router
+	// keeps is never compared with anything.
 	if m.EncryptedPassword.IsUnknown() {
 		putString(l, m.PlaintextPassword, "authentication", "plaintext-password")
+	} else {
+		putString(l, m.EncryptedPassword, "authentication", "encrypted-password")
 	}
 	return l
 }
@@ -140,13 +187,9 @@ func loginUserToLeaves(_ context.Context, m *loginUserModel, _ *diag.Diagnostics
 func loginUserFromTree(_ context.Context, tree any, m *loginUserModel, _ *diag.Diagnostics) {
 	m.Level = getString(tree, "level")
 	m.FullName = getString(tree, "full-name")
-	hash := getString(tree, "authentication", "encrypted-password")
-	if known(m.EncryptedPassword) && !hash.Equal(m.EncryptedPassword) {
-		// Changed outside Terraform: forget the password so the next plan
-		// writes the configured one again.
-		m.PlaintextPassword = types.StringNull()
-	}
-	m.EncryptedPassword = hash
+	m.EncryptedPassword = getString(tree, "authentication", "encrypted-password")
+	// Write only: never kept in the state.
+	m.PlaintextPassword = types.StringNull()
 	if m.AllowDestroyProviderUser.IsNull() {
 		m.AllowDestroyProviderUser = types.BoolValue(false)
 	}
@@ -189,6 +232,75 @@ func (r *loginUserResource) Configure(ctx context.Context, req resource.Configur
 	if pd, ok := req.ProviderData.(*providerData); ok {
 		r.username = pd.username
 	}
+}
+
+var _ resource.ResourceWithUpgradeState = (*loginUserResource)(nil)
+
+// Create and Update take the write-only password from the config, as the
+// plan never carries it.
+func (r *loginUserResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	copyPassword(ctx, req.Config, &req.Plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.leafResource.Create(ctx, req, resp)
+}
+
+func (r *loginUserResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	copyPassword(ctx, req.Config, &req.Plan, &resp.Diagnostics)
+	var planned types.String
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, attrHash, &planned)...)
+	if planned.IsUnknown() {
+		// The password is sent, so the old hash is no longer owned: the
+		// commit replaces it, and deleting it in the same batch is not needed.
+		resp.Diagnostics.Append(req.State.SetAttribute(ctx, attrHash, types.StringNull())...)
+	}
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.leafResource.Update(ctx, req, resp)
+}
+
+func copyPassword(ctx context.Context, config tfsdk.Config, plan *tfsdk.Plan, diags *diag.Diagnostics) {
+	var pw types.String
+	diags.Append(config.GetAttribute(ctx, attrPlaintext, &pw)...)
+	diags.Append(plan.SetAttribute(ctx, attrPlaintext, pw)...)
+}
+
+// UpgradeState drops the password that version 0 kept in the state.
+func (r *loginUserResource) UpgradeState(context.Context) map[int64]resource.StateUpgrader {
+	prior := loginUserSchemaV0()
+	return map[int64]resource.StateUpgrader{
+		0: {
+			PriorSchema: &prior,
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				var m loginUserModel
+				resp.Diagnostics.Append(req.State.Get(ctx, &m)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+				m.PlaintextPassword = types.StringNull()
+				resp.Diagnostics.Append(resp.State.Set(ctx, &m)...)
+			},
+		},
+	}
+}
+
+// loginUserSchemaV0 is the shape of the version 0 state, which stored
+// plaintext_password.
+func loginUserSchemaV0() schema.Schema {
+	str := func(computed bool) schema.StringAttribute {
+		return schema.StringAttribute{Optional: !computed, Computed: computed}
+	}
+	return schema.Schema{Attributes: map[string]schema.Attribute{
+		"id":                          str(true),
+		"name":                        schema.StringAttribute{Required: true},
+		"level":                       schema.StringAttribute{Optional: true, Computed: true},
+		"full_name":                   str(false),
+		"plaintext_password":          schema.StringAttribute{Required: true, Sensitive: true},
+		"encrypted_password":          schema.StringAttribute{Computed: true, Sensitive: true},
+		"allow_destroy_provider_user": schema.BoolAttribute{Optional: true, Computed: true},
+	}}
 }
 
 func (r *loginUserResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
