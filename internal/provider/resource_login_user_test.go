@@ -144,6 +144,7 @@ resource "edgeos_system_login_user" "alice" {
 				PreConfig: func() {
 					hash("system login user alice authentication encrypted-password", &firstHash)()
 					e.set("system login user alice authentication public-keys k1 type", configtree.Single("ssh-ed25519"))()
+					e.set("system login user alice authentication public-keys k1 key", configtree.Single(testEd25519Key))()
 				},
 				Config: e.config(`
 resource "edgeos_system_login_user" "alice" {

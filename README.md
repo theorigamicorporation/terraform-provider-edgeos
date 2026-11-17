@@ -283,6 +283,9 @@ source has its own example under [`examples/`](examples) and a page under
 | [`edgeos_wireguard_peer`](docs/resources/wireguard_peer.md) | a WireGuard peer |
 | [`edgeos_system`](docs/resources/system.md) | host name, domain, time zone, name servers, NTP |
 | [`edgeos_system_login_user`](docs/resources/system_login_user.md) | a login user with a write-only password |
+| [`edgeos_system_login_user_public_key`](docs/resources/system_login_user_public_key.md) | an SSH public key of a login user |
+| [`edgeos_service_ssh`](docs/resources/service_ssh.md) | SSH server port, listen addresses, password logins |
+| [`edgeos_service_gui`](docs/resources/service_gui.md) | web UI ports, listen addresses, ciphers, certificate |
 
 | Data source | Returns |
 |-------------|---------|
@@ -348,7 +351,9 @@ rules inside the rule set, and `edgeos_interface_ethernet` never touches VLAN
 interfaces on the port. Destroying a resource that represents a named node
 (a rule set, a rule, a VLAN) deletes that node; destroying a resource for
 something that always exists (a physical port, the system settings) only
-removes the attributes the resource manages.
+removes the attributes the resource manages. `edgeos_service_ssh` and
+`edgeos_service_gui` put their settings back to the defaults, so destroy never
+switches SSH or the web UI off.
 
 Changes made in the web UI or the CLI to managed attributes show up as drift
 on the next plan and are reverted on apply.

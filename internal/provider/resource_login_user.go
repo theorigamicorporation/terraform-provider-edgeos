@@ -72,7 +72,8 @@ func loginUserSchema() schema.Schema {
 			"Terraform state, so protect the state. When the hash on the router changes outside Terraform, the next " +
 			"plan sets the configured password again.\n\n" +
 			"Options this resource does not model, such as SSH keys below `authentication public-keys`, are left " +
-			"alone on update. Destroying the resource deletes the whole user, SSH keys included.\n\n" +
+			"alone on update; manage keys with `edgeos_system_login_user_public_key`. Destroying the resource " +
+			"deletes the whole user, SSH keys included.\n\n" +
 			"The user the provider logs in as is protected: destroying it only removes it from the Terraform state " +
 			"and leaves it on the router, unless `allow_destroy_provider_user = true`. Changing its `level` to " +
 			"`operator` takes away the configuration rights the provider needs.",

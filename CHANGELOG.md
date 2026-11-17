@@ -26,3 +26,7 @@ First release.
   from an inline private key) and `edgeos_wireguard_peer`.
 - Data sources: `edgeos_config`, `edgeos_system_info`.
 - Fake EdgeOS API server for tests and for trying the examples locally.
+- `edgeos_system_login_user_public_key` for SSH keys of login users, managed
+  apart from the user so they can be rotated on their own.
+- `edgeos_service_ssh` and `edgeos_service_gui` for the SSH server and the web
+  UI. Destroy restores the defaults and never switches SSH off.

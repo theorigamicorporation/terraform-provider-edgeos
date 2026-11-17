@@ -120,7 +120,7 @@ func DefaultTree() map[string]any {
 			"loopback": map[string]any{"lo": nil},
 		},
 		"service": map[string]any{
-			"gui": map[string]any{"http-port": "80", "https-port": "443"},
+			"gui": map[string]any{"http-port": "80", "https-port": "443", "older-ciphers": "enable"},
 			"ssh": map[string]any{"port": "22", "protocol-version": "v2"},
 		},
 		"system": map[string]any{

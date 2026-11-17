@@ -5,7 +5,7 @@ subcategory: ""
 description: |-
   A local login user (system login user <name>).
   The password is write only: Terraform sends plaintext_password to the router, EdgeOS stores only a hash (encrypted_password) and blanks the plaintext on commit. The configured password is kept in the Terraform state, so protect the state. When the hash on the router changes outside Terraform, the next plan sets the configured password again.
-  Options this resource does not model, such as SSH keys below authentication public-keys, are left alone on update. Destroying the resource deletes the whole user, SSH keys included.
+  Options this resource does not model, such as SSH keys below authentication public-keys, are left alone on update; manage keys with edgeos_system_login_user_public_key. Destroying the resource deletes the whole user, SSH keys included.
   The user the provider logs in as is protected: destroying it only removes it from the Terraform state and leaves it on the router, unless allow_destroy_provider_user = true. Changing its level to operator takes away the configuration rights the provider needs.
 ---
 
@@ -15,7 +15,7 @@ A local login user (`system login user <name>`).
 
 The password is write only: Terraform sends `plaintext_password` to the router, EdgeOS stores only a hash (`encrypted_password`) and blanks the plaintext on commit. The configured password is kept in the Terraform state, so protect the state. When the hash on the router changes outside Terraform, the next plan sets the configured password again.
 
-Options this resource does not model, such as SSH keys below `authentication public-keys`, are left alone on update. Destroying the resource deletes the whole user, SSH keys included.
+Options this resource does not model, such as SSH keys below `authentication public-keys`, are left alone on update; manage keys with `edgeos_system_login_user_public_key`. Destroying the resource deletes the whole user, SSH keys included.
 
 The user the provider logs in as is protected: destroying it only removes it from the Terraform state and leaves it on the router, unless `allow_destroy_provider_user = true`. Changing its `level` to `operator` takes away the configuration rights the provider needs.
 
