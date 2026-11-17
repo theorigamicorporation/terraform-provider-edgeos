@@ -87,6 +87,32 @@ WireGuard is in [`examples/full`](examples/full). Every resource and data
 source has its own example under [`examples/`](examples) and a page under
 [`docs/`](docs).
 
+## Resources and data sources
+
+| Resource | Manages |
+|----------|---------|
+| [`edgeos_config`](docs/resources/config.md) | any config node: a value, a list or a whole subtree |
+| [`edgeos_firewall_name`](docs/resources/firewall_name.md) | an IPv4 firewall rule set |
+| [`edgeos_firewall_rule`](docs/resources/firewall_rule.md) | one rule in a rule set |
+| [`edgeos_nat_rule`](docs/resources/nat_rule.md) | source, destination and masquerade NAT rules |
+| [`edgeos_port_forward`](docs/resources/port_forward.md) | one port forward rule |
+| [`edgeos_port_forward_settings`](docs/resources/port_forward_settings.md) | WAN/LAN interfaces, hairpin NAT, auto firewall |
+| [`edgeos_interface_ethernet`](docs/resources/interface_ethernet.md) | settings of a physical port |
+| [`edgeos_interface_vif`](docs/resources/interface_vif.md) | a VLAN interface |
+| [`edgeos_dhcp_shared_network`](docs/resources/dhcp_shared_network.md) | a DHCP server network with its subnets |
+| [`edgeos_dhcp_static_mapping`](docs/resources/dhcp_static_mapping.md) | a DHCP reservation |
+| [`edgeos_static_route`](docs/resources/static_route.md) | a static route via next hops or a blackhole |
+| [`edgeos_static_interface_route`](docs/resources/static_interface_route.md) | a static route via an interface |
+| [`edgeos_wireguard_interface`](docs/resources/wireguard_interface.md) | a WireGuard interface |
+| [`edgeos_wireguard_peer`](docs/resources/wireguard_peer.md) | a WireGuard peer |
+| [`edgeos_system`](docs/resources/system.md) | host name, domain, time zone, name servers, NTP |
+| [`edgeos_system_login_user`](docs/resources/system_login_user.md) | a login user with a write-only password |
+
+| Data source | Returns |
+|-------------|---------|
+| [`edgeos_config`](docs/data-sources/config.md) | any config node, or whether it exists |
+| [`edgeos_system_info`](docs/data-sources/system_info.md) | firmware version, platform, host name |
+
 ## Authentication
 
 | Attribute        | Environment variable    | Default |
