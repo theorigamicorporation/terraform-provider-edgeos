@@ -33,7 +33,7 @@ type Transport interface {
 // SystemInfo describes the running firmware.
 type SystemInfo struct {
 	// SoftwareVersion is the raw version string, for example
-	// "EdgeRouter.ER-e50.v3.0.1.5862409.250924.1407".
+	// "EdgeRouter.ER-e50.v3.0.1.5800000.250900.1200".
 	SoftwareVersion string
 	// Platform is the hardware platform code such as "e50".
 	Platform string

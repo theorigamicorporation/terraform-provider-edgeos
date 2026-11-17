@@ -39,7 +39,7 @@ small JSON API that is stable across EdgeOS 1.x, 2.x and 3.x.
   retries; a `403` means the request was not executed, so this is safe for
   writes too.
 - Version and model: `GET /api/edge/data.json?data=sys_info` returns
-  `sw_ver` such as `EdgeRouter.ER-e50.v3.0.1.5862409.250924.1407`.
+  `sw_ver` such as `EdgeRouter.ER-e50.v3.0.1.5800000.250900.1200`.
 
 Pros: structured JSON both ways, atomic commit with error details per path,
 no PTY scraping, same behaviour as the GUI. Cons: undocumented; the batch call

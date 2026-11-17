@@ -165,7 +165,7 @@ func (d *systemInfoDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			"hardware platform, which several models share.",
 		Attributes: map[string]schema.Attribute{
 			"id":               computed("Same as `software_version`."),
-			"software_version": computed("Full version string, such as `EdgeRouter.ER-e50.v3.0.1.5862409.250924.1407`."),
+			"software_version": computed("Full version string, such as `EdgeRouter.ER-e50.v3.0.1.5800000.250900.1200`."),
 			"version":          computed("Firmware release, such as `v3.0.1`."),
 			"build":            computed("Build identifier after the release."),
 			"platform":         computed("Hardware platform code, such as `e50`."),

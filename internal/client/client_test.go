@@ -151,7 +151,7 @@ func TestParseSoftwareVersion(t *testing.T) {
 		in                       string
 		platform, version, build string
 	}{
-		{"EdgeRouter.ER-e50.v3.0.1.5862409.250924.1407", "e50", "v3.0.1", "5862409.250924.1407"},
+		{"EdgeRouter.ER-e50.v3.0.1.5800000.250900.1200", "e50", "v3.0.1", "5800000.250900.1200"},
 		{"EdgeRouter.ER-e300.v2.0.9-hotfix.7.5622731.230615.0857", "e300", "v2.0.9-hotfix", "7.5622731.230615.0857"},
 		{"EdgeRouter.ER-e100.v1.10.11.5274249.191223.1110", "e100", "v1.10.11", "5274249.191223.1110"},
 		{"something else", "", "", ""},
