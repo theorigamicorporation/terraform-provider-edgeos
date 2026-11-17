@@ -264,6 +264,8 @@ func (p *edgeosProvider) Resources(_ context.Context) []func() resource.Resource
 		newFirewallRuleResource(),
 		newDHCPSharedNetworkResource(),
 		newDHCPStaticMappingResource(),
+		newWireguardInterfaceResource(),
+		newWireguardPeerResource(),
 	}
 }
 

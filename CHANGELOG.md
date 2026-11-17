@@ -16,5 +16,8 @@ First release.
 - Web UI API transport with session renewal, atomic commits per change and
   serialised writes.
 - Resources: `edgeos_config`, `edgeos_firewall_name`, `edgeos_firewall_rule`.
+- DHCP server resources: `edgeos_dhcp_shared_network` and `edgeos_dhcp_static_mapping`.
+- WireGuard resources: `edgeos_wireguard_interface` (with the public key derived
+  from an inline private key) and `edgeos_wireguard_peer`.
 - Data sources: `edgeos_config`, `edgeos_system_info`.
 - Fake EdgeOS API server for tests and for trying the examples locally.
