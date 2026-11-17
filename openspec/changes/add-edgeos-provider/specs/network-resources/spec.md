@@ -33,7 +33,7 @@ Resources SHALL reject combinations EdgeOS would refuse at commit time when they
 - **THEN** plan fails and nothing is sent to the router
 
 ### Requirement: Modelled resources
-The provider SHALL include `edgeos_firewall_name`, `edgeos_firewall_rule`, `edgeos_nat_rule`, `edgeos_port_forward`, `edgeos_port_forward_settings`, `edgeos_interface_ethernet`, `edgeos_interface_vif`, `edgeos_dhcp_shared_network`, `edgeos_dhcp_static_mapping`, `edgeos_static_route`, `edgeos_wireguard_interface`, `edgeos_wireguard_peer` and `edgeos_system`.
+The provider SHALL include `edgeos_firewall_name`, `edgeos_firewall_rule`, `edgeos_nat_rule`, `edgeos_port_forward`, `edgeos_port_forward_settings`, `edgeos_interface_ethernet`, `edgeos_interface_vif`, `edgeos_dhcp_shared_network`, `edgeos_dhcp_static_mapping`, `edgeos_static_route`, `edgeos_wireguard_interface`, `edgeos_wireguard_peer`, `edgeos_system` and `edgeos_system_login_user`.
 
 #### Scenario: Secrets
 - **WHEN** a WireGuard private or preshared key is configured inline

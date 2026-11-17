@@ -21,7 +21,7 @@
 - [x] 3.3 `edgeos_config` resource and data source, `edgeos_system_info` data source
 - [x] 3.4 `edgeos_firewall_name`, `edgeos_firewall_rule`
 - [x] 3.5 `edgeos_nat_rule`, `edgeos_port_forward`, `edgeos_port_forward_settings`, `edgeos_static_route`
-- [x] 3.6 `edgeos_interface_ethernet`, `edgeos_interface_vif`, `edgeos_system`
+- [x] 3.6 `edgeos_interface_ethernet`, `edgeos_interface_vif`, `edgeos_system`, `edgeos_system_login_user`
 - [x] 3.7 `edgeos_dhcp_shared_network`, `edgeos_dhcp_static_mapping`
 - [x] 3.8 `edgeos_wireguard_interface`, `edgeos_wireguard_peer`
 
