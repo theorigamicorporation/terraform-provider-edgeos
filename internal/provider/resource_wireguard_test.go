@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
@@ -671,4 +673,23 @@ resource "edgeos_wireguard_peer" "p" {
 			},
 		},
 	})
+}
+
+// A base64 key can start with '/', which must not be mistaken for a key file.
+func TestWireguardKeyStartingWithSlash(t *testing.T) {
+	t.Parallel()
+	var key string
+	for key == "" {
+		if priv, _ := testWGKey(t); strings.HasPrefix(priv, "/") {
+			key = priv
+		}
+	}
+	ctx := context.Background()
+	for _, v := range []validator.String{wireguardKey(), wireguardKeyOrFile()} {
+		resp := &validator.StringResponse{}
+		v.ValidateString(ctx, validator.StringRequest{Path: path.Root("k"), ConfigValue: types.StringValue(key)}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("key %q rejected: %v", key, resp.Diagnostics)
+		}
+	}
 }

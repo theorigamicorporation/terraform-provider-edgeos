@@ -90,6 +90,10 @@ func (v wgKeyValidator) ValidateString(ctx context.Context, req validator.String
 		return
 	}
 	s := req.ConfigValue.ValueString()
+	// Base64 keys can start with '/', so a value that decodes to a key wins.
+	if _, err := parseWGKey(s); err == nil {
+		return
+	}
 	if v.files && strings.HasPrefix(s, "/") {
 		if !isKeyFile(s) {
 			resp.Diagnostics.AddAttributeError(req.Path, "Invalid key file path",
