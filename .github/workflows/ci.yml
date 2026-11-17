@@ -36,7 +36,7 @@ jobs:
   unit:
     name: Unit tests
     runs-on: ${{ github.event.repository.private && 'o4-k8s-runner-set-o4' || 'ubuntu-latest' }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
@@ -127,7 +127,7 @@ jobs:
   release-check:
     name: Release config
     runs-on: ${{ github.event.repository.private && 'o4-k8s-runner-set-o4' || 'ubuntu-latest' }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -135,4 +135,6 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           goreleaser: "true"
-      - run: just release-check
+      # The full cross-platform build runs in the release workflow; here one
+      # platform is enough to prove the config builds.
+      - run: just release-check false

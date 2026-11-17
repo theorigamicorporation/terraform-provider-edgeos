@@ -129,10 +129,14 @@ docs-check: docs
     @test -z "$(git status --porcelain -- docs/)" || \
       (echo "Untracked files in docs/. Run 'just docs' and commit the result."; git status --porcelain -- docs/; exit 1)
 
-# Validate the goreleaser config and build a local snapshot without signing
-release-check:
+# Validate the goreleaser config and build a snapshot without signing (all platforms, or only this one with full=false)
+release-check full="true":
     goreleaser check
-    goreleaser release --snapshot --clean --skip=sign
+    if [ "{{full}}" = "true" ]; then \
+      goreleaser release --snapshot --clean --skip=sign; \
+    else \
+      goreleaser build --snapshot --clean --single-target; \
+    fi
 
 # Run the fake EdgeOS API locally to try the examples with terraform or tofu
 fake-server addr="127.0.0.1:8443":

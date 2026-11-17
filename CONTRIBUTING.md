@@ -74,6 +74,8 @@ those in place `terraform plan` and `tofu plan` use your local build. Use
 
 ## Design notes
 
-The OpenSpec change in `openspec/` describes the transport evaluation, the
-data model and the ownership rules. Read `design.md` there before larger
-changes.
+The archived OpenSpec change in
+`openspec/changes/archive/2026-11-17-add-edgeos-provider/` describes the
+transport evaluation, the data model and the ownership rules, and
+`openspec/specs/` holds the current requirements. Read `design.md` there before
+larger changes, and start new features with an OpenSpec change.
