@@ -1,0 +1,77 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - copyloopvar
+    - depguard
+    - durationcheck
+    - errcheck
+    - errorlint
+    - forcetypeassert
+    - gocritic
+    - godot
+    - gosec
+    - govet
+    - ineffassign
+    - makezero
+    - misspell
+    - nilerr
+    - nolintlint
+    - predeclared
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - usetesting
+  settings:
+    depguard:
+      rules:
+        main:
+          list-mode: lax
+          deny:
+            - pkg: github.com/hashicorp/terraform-plugin-sdk/v2
+              desc: Use the Terraform Plugin Framework
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - singleCaseSwitch
+    gosec:
+      excludes:
+        # Tests and the fake router use self-signed certificates on purpose.
+        - G402
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: unused-parameter
+          disabled: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - forcetypeassert
+          - gosec
+          - unparam
+    paths:
+      - examples$
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax

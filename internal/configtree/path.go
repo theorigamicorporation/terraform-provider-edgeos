@@ -11,6 +11,7 @@ package configtree
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -51,15 +52,7 @@ func (p Path) Last() string {
 
 // Equal reports whether both paths have the same node names.
 func (p Path) Equal(q Path) bool {
-	if len(p) != len(q) {
-		return false
-	}
-	for i := range p {
-		if p[i] != q[i] {
-			return false
-		}
-	}
-	return true
+	return slices.Equal(p, q)
 }
 
 // HasPrefix reports whether q is a prefix of p.
@@ -168,14 +161,14 @@ func ParsePath(s string) (Path, error) {
 	)
 	for i := 0; i < len(rs); i++ {
 		r := rs[i]
-		switch {
-		case r == ' ' || r == '\t' || r == '\n' || r == '\r':
+		switch r {
+		case ' ', '\t', '\n', '\r':
 			if inElem {
 				out = append(out, cur.String())
 				cur.Reset()
 				inElem = false
 			}
-		case r == '"':
+		case '"':
 			inElem = true
 			closed := false
 			for i++; i < len(rs); i++ {
@@ -206,7 +199,7 @@ func ParsePath(s string) (Path, error) {
 			if !closed {
 				return nil, fmt.Errorf("missing closing double quote in %q", s)
 			}
-		case r == '\'':
+		case '\'':
 			inElem = true
 			closed := false
 			for i++; i < len(rs); i++ {

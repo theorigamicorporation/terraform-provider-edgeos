@@ -103,9 +103,12 @@ func New(opts Options) *Server {
 func DefaultTree() map[string]any {
 	eth := map[string]any{}
 	for i := 0; i < 5; i++ {
-		eth[fmt.Sprintf("eth%d", i)] = map[string]any{"duplex": "auto", "speed": "auto"}
+		port := map[string]any{"duplex": "auto", "speed": "auto"}
+		if i == 1 {
+			port["address"] = []string{"192.168.1.1/24"}
+		}
+		eth[fmt.Sprintf("eth%d", i)] = port
 	}
-	eth["eth1"].(map[string]any)["address"] = []string{"192.168.1.1/24"}
 	return map[string]any{
 		"firewall": map[string]any{
 			"all-ping":       "enable",
@@ -234,8 +237,9 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	s.sessions[id] = csrf
 	s.logins++
 	s.mu.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: "PHPSESSID", Value: id, Path: "/", HttpOnly: true, Secure: true})
-	http.SetCookie(w, &http.Cookie{Name: "X-CSRF-TOKEN", Value: csrf, Path: "/", Secure: true})
+	http.SetCookie(w, &http.Cookie{Name: "PHPSESSID", Value: id, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
+	// The CSRF cookie is read by the GUI's JavaScript, so it is not HttpOnly.
+	http.SetCookie(w, &http.Cookie{Name: "X-CSRF-TOKEN", Value: csrf, Path: "/", Secure: true, SameSite: http.SameSiteStrictMode}) //nolint:gosec // matches EdgeOS
 	w.Header().Set("Location", "/")
 	w.WriteHeader(http.StatusSeeOther)
 }

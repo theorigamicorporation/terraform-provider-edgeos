@@ -92,7 +92,7 @@ func New(cfg Config) (*Transport, error) {
 	}
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
 	if cfg.Insecure {
-		tlsCfg.InsecureSkipVerify = true //nolint:gosec // explicit opt-in for self-signed router certificates
+		tlsCfg.InsecureSkipVerify = true // explicit opt-in for self-signed router certificates
 	}
 	if len(cfg.CACertPEM) > 0 {
 		pool := x509.NewCertPool()
@@ -330,7 +330,7 @@ func (t *Transport) Read(ctx context.Context, path configtree.Path) (any, bool, 
 	if !truthy(resp.Success, true) {
 		return nil, false, fmt.Errorf("partial.json for %q failed: %s", path.String(), snippet(body))
 	}
-	tree := configtree.Normalize(map[string]any(resp.GET))
+	tree := configtree.Normalize(resp.GET)
 	if len(parent) == 0 {
 		top, ok := configtree.Lookup(tree, path)
 		// An unconfigured top level node is reported as null or "".
@@ -355,7 +355,7 @@ func (t *Transport) Read(ctx context.Context, path configtree.Path) (any, bool, 
 }
 
 func nest(p configtree.Path, leaf any) any {
-	var out any = leaf
+	out := leaf
 	for i := len(p) - 1; i >= 0; i-- {
 		out = map[string]any{p[i]: out}
 	}
