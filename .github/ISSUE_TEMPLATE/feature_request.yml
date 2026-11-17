@@ -1,0 +1,22 @@
+name: Feature request
+description: A resource, attribute or behaviour you would like to see
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to manage?
+      description: The EdgeOS config you want to manage, ideally as `set ...` commands with example values.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: How would you like it to look?
+      description: A sketch of the resource or attribute in HCL.
+      render: hcl
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround
+      description: For example an `edgeos_config` resource.

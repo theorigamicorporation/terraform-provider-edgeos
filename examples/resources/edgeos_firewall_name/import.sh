@@ -1,0 +1,1 @@
+terraform import edgeos_firewall_name.wan_in WAN_IN

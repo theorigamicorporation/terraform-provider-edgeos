@@ -1,0 +1,69 @@
+name: Set up toolchain
+description: >
+  Installs Go (from go.mod) and just, golangci-lint, terraform, tofu and
+  goreleaser at the versions pinned in .tool-versions, so CI and local runs use
+  the same tools. A tool can be skipped or overridden per job.
+inputs:
+  terraform:
+    description: Terraform version, "pinned" for .tool-versions, or "" to skip
+    default: ""
+  tofu:
+    description: OpenTofu version, "pinned" for .tool-versions, or "" to skip
+    default: ""
+  golangci-lint:
+    description: Install golangci-lint ("true"/"false")
+    default: "false"
+  goreleaser:
+    description: Install goreleaser ("true"/"false")
+    default: "false"
+outputs:
+  terraform:
+    description: Installed Terraform version
+    value: ${{ steps.versions.outputs.terraform }}
+  tofu:
+    description: Installed OpenTofu version
+    value: ${{ steps.versions.outputs.tofu }}
+runs:
+  using: composite
+  steps:
+    - name: Read .tool-versions
+      id: versions
+      shell: bash
+      run: |
+        pinned() { awk -v t="$1" '$1 == t { print $2 }' .tool-versions; }
+        tf="${{ inputs.terraform }}"; [ "$tf" = pinned ] && tf="$(pinned terraform)"
+        tofu="${{ inputs.tofu }}"; [ "$tofu" = pinned ] && tofu="$(pinned opentofu)"
+        {
+          echo "just=$(pinned just)"
+          echo "golangci-lint=v$(pinned golangci-lint)"
+          echo "goreleaser=v$(pinned goreleaser)"
+          echo "terraform=$tf"
+          echo "tofu=$tofu"
+        } >> "$GITHUB_OUTPUT"
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+        cache: true
+    - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      with:
+        just-version: ${{ steps.versions.outputs.just }}
+    - if: steps.versions.outputs.terraform != ''
+      uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+      with:
+        terraform_version: ${{ steps.versions.outputs.terraform }}
+        terraform_wrapper: false
+    - if: steps.versions.outputs.tofu != ''
+      uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+      with:
+        tofu_version: ${{ steps.versions.outputs.tofu }}
+        tofu_wrapper: false
+    - if: inputs.golangci-lint == 'true'
+      uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+      with:
+        version: ${{ steps.versions.outputs.golangci-lint }}
+        install-only: true
+    - if: inputs.goreleaser == 'true'
+      uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+      with:
+        version: ${{ steps.versions.outputs.goreleaser }}
+        install-only: true

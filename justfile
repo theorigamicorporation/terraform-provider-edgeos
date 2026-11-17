@@ -45,7 +45,7 @@ install:
 
 # Format Go code and the Terraform examples
 fmt:
-    gofmt -w .
+    go fmt ./...
     terraform fmt -recursive examples/
 
 # Run golangci-lint

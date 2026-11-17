@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+        with:
+          golangci-lint: "true"
+      - run: just lint
+      - name: go mod tidy is clean
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: just build
+      - run: just test
+      - name: Short fuzz run
+        run: just fuzz 10
+
+  docs:
+    name: Docs are up to date
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+        with:
+          terraform: pinned
+      - run: just docs-check
+
+  acceptance-terraform:
+    name: "Acceptance: Terraform ${{ matrix.terraform }}"
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # "pinned" is the version in .tool-versions; the rest are older
+        # releases we still support.
+        terraform: [pinned, "1.15.9", "1.13.5"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+        id: setup
+        with:
+          terraform: ${{ matrix.terraform }}
+      - run: terraform version
+      - run: just testacc-terraform -v
+
+  acceptance-tofu:
+    name: "Acceptance: OpenTofu ${{ matrix.tofu }}"
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        tofu: [pinned, "1.12.12", "1.11.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+        with:
+          tofu: ${{ matrix.tofu }}
+      - run: tofu version
+      - run: just testacc-tofu -v
+
+  coverage:
+    name: Coverage
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+        with:
+          terraform: pinned
+      - run: just cover 80 | tee cover.txt
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo "### Coverage of internal/..."
+            echo
+            echo '```'
+            go tool cover -func=coverage.out | sort -k3 -n | head -n 25
+            echo '...'
+            go tool cover -func=coverage.out | tail -n 1
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: coverage
+          path: |
+            coverage.out
+            coverage.html
+
+  release-check:
+    name: Release config
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+        with:
+          goreleaser: "true"
+      - run: just release-check

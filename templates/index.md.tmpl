@@ -1,0 +1,62 @@
+---
+page_title: "Provider: EdgeOS"
+description: |-
+  Manage Ubiquiti EdgeRouter (EdgeOS) configuration with Terraform or OpenTofu.
+---
+
+# EdgeOS Provider
+
+Manage Ubiquiti EdgeRouter configuration (EdgeOS): firewall rule sets, NAT,
+port forwards, interfaces and VLANs, DHCP, static routes, WireGuard and system
+settings, plus `edgeos_config` for any other config node.
+
+The same provider works with Terraform and OpenTofu under the source address
+`theorigamicorporation/edgeos`.
+
+## How it works
+
+The provider talks to the JSON API that the EdgeOS web UI uses. Every change
+of one resource is sent as one batch: EdgeOS applies the deletes and sets,
+commits them as one transaction and saves the result to `config.boot`. When
+EdgeOS rejects a commit nothing changes and the error is shown with the config
+path it refers to. Writes are serialised per provider instance because EdgeOS
+fails on overlapping commits.
+
+Each resource owns a fixed set of attributes below one config node and does not
+touch anything else there. Changes made in the web UI or CLI to managed
+attributes are reported as drift and reverted on the next apply.
+
+The login user needs the `admin` level.
+
+## Example Usage
+
+{{ tffile "examples/provider/provider.tf" }}
+
+## Authentication
+
+All arguments can also be set through environment variables, which is the
+usual way to keep the password out of the configuration:
+
+```sh
+export EDGEOS_HOST=192.168.1.1
+export EDGEOS_USERNAME=admin
+export EDGEOS_PASSWORD='...'
+export EDGEOS_INSECURE=true
+```
+
+EdgeRouters ship a self-signed certificate. Prefer pinning it with
+`ca_certificate` over `insecure = true` when the certificate is valid for the
+address you connect to.
+
+## Import
+
+All resources support import, with `terraform import` / `tofu import` or with
+`import` blocks. The expected ID is shown on each resource page.
+
+## Compatibility
+
+Developed against EdgeOS 3.0.x on an EdgeRouter X. The web API has been stable
+since EdgeOS 1.x, so other EdgeRouter models and EdgeOS 2.0.x are expected to
+work. UniFi gateways are not supported.
+
+{{ .SchemaMarkdown | trimspace }}
