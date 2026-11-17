@@ -24,6 +24,10 @@ First release.
 - DHCP server resources: `edgeos_dhcp_shared_network` and `edgeos_dhcp_static_mapping`.
 - WireGuard resources: `edgeos_wireguard_interface` (with the public key derived
   from an inline private key) and `edgeos_wireguard_peer`.
+- System resources: `edgeos_system_offload`, `edgeos_system_syslog`,
+  `edgeos_system_syslog_host`, `edgeos_system_syslog_file` and
+  `edgeos_system_task_scheduler_task`.
+- `edgeos_system`: optional `send_analytics_report` and `send_crash_report`.
 - Data sources: `edgeos_config`, `edgeos_system_info`.
 - Fake EdgeOS API server for tests and for trying the examples locally.
 - `edgeos_system_login_user_public_key` for SSH keys of login users, managed

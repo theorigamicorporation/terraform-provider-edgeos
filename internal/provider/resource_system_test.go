@@ -22,6 +22,7 @@ func nullSystem() systemModel {
 	return systemModel{
 		HostName: types.StringNull(), DomainName: types.StringNull(), TimeZone: types.StringNull(),
 		NameServers: types.ListNull(types.StringType), NTPServers: types.SetNull(types.StringType),
+		SendAnalyticsReport: types.BoolNull(), SendCrashReport: types.BoolNull(),
 	}
 }
 
@@ -34,6 +35,9 @@ func TestSystemMapping(t *testing.T) {
 		TimeZone:    types.StringValue("Europe/Amsterdam"),
 		NameServers: stringList([]string{"198.51.100.53", "192.0.2.53", "2001:db8::53"}),
 		NTPServers:  stringSet([]string{"192.0.2.123", "ntp.example.net"}),
+
+		SendAnalyticsReport: types.BoolValue(false),
+		SendCrashReport:     types.BoolValue(true),
 	}
 	cases := []struct {
 		name   string
@@ -48,6 +52,8 @@ func TestSystemMapping(t *testing.T) {
 			"name-server":                configtree.Multi("198.51.100.53", "192.0.2.53", "2001:db8::53"),
 			"ntp server 192.0.2.123":     configtree.Flag(),
 			"ntp server ntp.example.net": configtree.Flag(),
+			"analytics-handler send-analytics-report": configtree.Single("false"),
+			"crash-handler send-crash-report":         configtree.Single("true"),
 		}},
 	}
 	for _, tc := range cases {
@@ -74,8 +80,9 @@ func TestSystemFromTreeReadsOnlyManagedAttributes(t *testing.T) {
 	t.Parallel()
 	tree := map[string]any{
 		"host-name": "r1", "time-zone": "UTC", "name-server": []any{"192.0.2.53"},
-		"ntp":   map[string]any{"server": map[string]any{"a.example": nil, "b.example": map[string]any{"prefer": nil}}},
-		"login": map[string]any{"user": map[string]any{"admin": map[string]any{"level": "admin"}}},
+		"ntp":           map[string]any{"server": map[string]any{"a.example": nil, "b.example": map[string]any{"prefer": nil}}},
+		"login":         map[string]any{"user": map[string]any{"admin": map[string]any{"level": "admin"}}},
+		"crash-handler": map[string]any{"send-crash-report": "false"},
 	}
 	m := nullSystem()
 	m.ID = types.StringValue(systemID)
@@ -85,7 +92,7 @@ func TestSystemFromTreeReadsOnlyManagedAttributes(t *testing.T) {
 	if m.HostName.ValueString() != "r1" || !m.NTPServers.Equal(stringSet([]string{"a.example", "b.example"})) {
 		t.Errorf("managed attributes not read: %+v", m)
 	}
-	if !m.TimeZone.IsNull() || !m.NameServers.IsNull() || !m.DomainName.IsNull() {
+	if !m.TimeZone.IsNull() || !m.NameServers.IsNull() || !m.DomainName.IsNull() || !m.SendCrashReport.IsNull() {
 		t.Errorf("unmanaged attributes were read: %+v", m)
 	}
 }
@@ -215,9 +222,51 @@ resource "edgeos_system" "this" {
 				),
 			},
 			{
-				// Back to the full config before destroy.
+				// The report switches are optional and only managed when set.
+				PreConfig: e.set("system crash-handler send-crash-report", configtree.Single("true")),
+				Config: e.config(`
+resource "edgeos_system" "this" {
+  host_name             = "gw02"
+  time_zone             = "Europe/Amsterdam"
+  name_servers          = ["192.0.2.53", "198.51.100.53"]
+  ntp_servers           = ["192.0.2.123"]
+  send_analytics_report = false
+}`),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("edgeos_system.this", plancheck.ResourceActionUpdate),
+				}},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					e.checkValue("system analytics-handler send-analytics-report", "false"),
+					e.checkValue("system crash-handler send-crash-report", "true"),
+					resource.TestCheckNoResourceAttr("edgeos_system.this", "send_crash_report"),
+				),
+			},
+			{
+				// Drift on a report switch is corrected.
+				PreConfig: e.set("system analytics-handler send-analytics-report", configtree.Single("true")),
+				Config: e.config(`
+resource "edgeos_system" "this" {
+  host_name             = "gw02"
+  time_zone             = "Europe/Amsterdam"
+  name_servers          = ["192.0.2.53", "198.51.100.53"]
+  ntp_servers           = ["192.0.2.123"]
+  send_analytics_report = false
+  send_crash_report     = false
+}`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					e.checkValue("system analytics-handler send-analytics-report", "false"),
+					e.checkValue("system crash-handler send-crash-report", "false"),
+				),
+			},
+			{
+				// Back to the full config before destroy. Dropping the
+				// switches removes them.
 				Config: e.config(systemConfig),
-				Check:  e.checkValue("system domain-name", "example.net"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					e.checkValue("system domain-name", "example.net"),
+					e.checkAbsent("system analytics-handler"),
+					e.checkAbsent("system crash-handler"),
+				),
 			},
 		},
 	})

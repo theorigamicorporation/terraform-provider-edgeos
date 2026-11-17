@@ -141,7 +141,10 @@ func DefaultTree() map[string]any {
 				"0.ubnt.pool.ntp.org": nil,
 				"1.ubnt.pool.ntp.org": nil,
 			}},
-			"syslog":    map[string]any{"global": map[string]any{"facility": map[string]any{"all": map[string]any{"level": "notice"}}}},
+			"syslog": map[string]any{"global": map[string]any{"facility": map[string]any{
+				"all":       map[string]any{"level": "notice"},
+				"protocols": map[string]any{"level": "debug"},
+			}}},
 			"time-zone": "UTC",
 		},
 	}

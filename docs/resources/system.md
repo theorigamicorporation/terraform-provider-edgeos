@@ -4,7 +4,7 @@ page_title: "edgeos_system Resource - edgeos"
 subcategory: ""
 description: |-
   Basic system settings (system). There is one per router; the resource takes over the existing settings.
-  Only the attributes you set are managed. Anything you leave out, and the rest of system (login users, syslog, offload, task scheduler, ...), is neither read nor changed. Removing an attribute from the configuration removes that setting from the router. Import reads every attribute.
+  Only the attributes you set are managed. Anything you leave out, and the rest of system (login users, syslog, offload, task scheduler, ...), is neither read nor changed; edgeos_system_syslog, edgeos_system_offload and edgeos_system_task_scheduler_task manage those. Removing an attribute from the configuration removes that setting from the router. Import reads every attribute.
   Destroying the resource deletes the settings it manages and leaves everything else in system alone. EdgeOS then uses its defaults: the host name goes back to ubnt, the time zone to UTC, and the router has no NTP servers or static name servers left.
 ---
 
@@ -12,7 +12,7 @@ description: |-
 
 Basic system settings (`system`). There is one per router; the resource takes over the existing settings.
 
-Only the attributes you set are managed. Anything you leave out, and the rest of `system` (login users, syslog, offload, task scheduler, ...), is neither read nor changed. Removing an attribute from the configuration removes that setting from the router. Import reads every attribute.
+Only the attributes you set are managed. Anything you leave out, and the rest of `system` (login users, syslog, offload, task scheduler, ...), is neither read nor changed; `edgeos_system_syslog`, `edgeos_system_offload` and `edgeos_system_task_scheduler_task` manage those. Removing an attribute from the configuration removes that setting from the router. Import reads every attribute.
 
 Destroying the resource deletes the settings it manages and leaves everything else in `system` alone. EdgeOS then uses its defaults: the host name goes back to `ubnt`, the time zone to UTC, and the router has no NTP servers or static name servers left.
 
@@ -25,6 +25,10 @@ resource "edgeos_system" "this" {
   time_zone    = "Europe/Amsterdam"
   name_servers = ["192.0.2.53", "198.51.100.53"]
   ntp_servers  = ["0.ubnt.pool.ntp.org", "192.0.2.123"]
+
+  # Optional: unset leaves the router's setting alone.
+  send_analytics_report = false
+  send_crash_report     = false
 }
 ```
 
@@ -37,6 +41,8 @@ resource "edgeos_system" "this" {
 - `host_name` (String) Host name of the router, a single DNS label such as `gw01`.
 - `name_servers` (List of String) DNS servers the router itself uses, in order of preference.
 - `ntp_servers` (Set of String) NTP servers (`system ntp server <name>`), host names or addresses. The resource owns the whole list: servers that are not in it are removed, including their options. Options such as `prefer` on a server that stays in the list are kept.
+- `send_analytics_report` (Boolean) Send anonymous usage statistics to Ubiquiti (`analytics-handler send-analytics-report`). Unset leaves the current setting alone.
+- `send_crash_report` (Boolean) Send crash reports to Ubiquiti (`crash-handler send-crash-report`). Unset leaves the current setting alone.
 - `time_zone` (String) Time zone name from the tz database, such as `UTC` or `Europe/Amsterdam`.
 
 ### Read-Only

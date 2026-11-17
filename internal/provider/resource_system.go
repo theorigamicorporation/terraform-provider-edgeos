@@ -48,12 +48,14 @@ func (addrValidator) ValidateString(_ context.Context, req validator.StringReque
 }
 
 type systemModel struct {
-	ID          types.String `tfsdk:"id"`
-	HostName    types.String `tfsdk:"host_name"`
-	DomainName  types.String `tfsdk:"domain_name"`
-	TimeZone    types.String `tfsdk:"time_zone"`
-	NameServers types.List   `tfsdk:"name_servers"`
-	NTPServers  types.Set    `tfsdk:"ntp_servers"`
+	ID                  types.String `tfsdk:"id"`
+	HostName            types.String `tfsdk:"host_name"`
+	DomainName          types.String `tfsdk:"domain_name"`
+	TimeZone            types.String `tfsdk:"time_zone"`
+	NameServers         types.List   `tfsdk:"name_servers"`
+	NTPServers          types.Set    `tfsdk:"ntp_servers"`
+	SendAnalyticsReport types.Bool   `tfsdk:"send_analytics_report"`
+	SendCrashReport     types.Bool   `tfsdk:"send_crash_report"`
 }
 
 const systemID = "system"
@@ -63,7 +65,8 @@ func systemSchema() schema.Schema {
 		MarkdownDescription: "Basic system settings (`system`). There is one per router; the resource takes over the " +
 			"existing settings.\n\n" +
 			"Only the attributes you set are managed. Anything you leave out, and the rest of `system` (login users, " +
-			"syslog, offload, task scheduler, ...), is neither read nor changed. Removing an attribute from the " +
+			"syslog, offload, task scheduler, ...), is neither read nor changed; `edgeos_system_syslog`, `edgeos_system_offload` " +
+			"and `edgeos_system_task_scheduler_task` manage those. Removing an attribute from the " +
 			"configuration removes that setting from the router. Import reads every attribute.\n\n" +
 			"Destroying the resource deletes the settings it manages and leaves everything else in `system` alone. " +
 			"EdgeOS then uses its defaults: the host name goes back to `ubnt`, the time zone to UTC, and the router " +
@@ -112,6 +115,16 @@ func systemSchema() schema.Schema {
 					setvalidator.ValueStringsAre(stringvalidator.RegexMatches(ntpServerRE, "must be a host name or IP address")),
 				},
 			},
+			"send_analytics_report": schema.BoolAttribute{
+				MarkdownDescription: "Send anonymous usage statistics to Ubiquiti (`analytics-handler send-analytics-report`). " +
+					"Unset leaves the current setting alone.",
+				Optional: true,
+			},
+			"send_crash_report": schema.BoolAttribute{
+				MarkdownDescription: "Send crash reports to Ubiquiti (`crash-handler send-crash-report`). " +
+					"Unset leaves the current setting alone.",
+				Optional: true,
+			},
 		},
 	}
 }
@@ -123,6 +136,8 @@ func systemToLeaves(ctx context.Context, m *systemModel, diags *diag.Diagnostics
 	putString(l, m.TimeZone, "time-zone")
 	putStrings(ctx, l, m.NameServers, diags, "name-server")
 	putTags(ctx, l, m.NTPServers, diags, "ntp", "server")
+	putBoolString(l, m.SendAnalyticsReport, "analytics-handler", "send-analytics-report")
+	putBoolString(l, m.SendCrashReport, "crash-handler", "send-crash-report")
 	return l
 }
 
@@ -144,6 +159,12 @@ func systemFromTree(_ context.Context, tree any, m *systemModel, _ *diag.Diagnos
 	}
 	if want(m.NTPServers) {
 		m.NTPServers = getTags(tree, "ntp", "server")
+	}
+	if want(m.SendAnalyticsReport) {
+		m.SendAnalyticsReport = getBoolString(tree, "analytics-handler", "send-analytics-report")
+	}
+	if want(m.SendCrashReport) {
+		m.SendCrashReport = getBoolString(tree, "crash-handler", "send-crash-report")
 	}
 }
 

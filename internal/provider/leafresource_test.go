@@ -44,3 +44,24 @@ func TestOwnedOnDevice(t *testing.T) {
 		t.Fatalf("batch:\n%s\nwant:\n%s", got, wantCLI)
 	}
 }
+
+func TestKeepCovered(t *testing.T) {
+	t.Parallel()
+	// Owned facilities on the device: all and protocols stay configured, mail
+	// goes away.
+	owned := configtree.NewLeaves()
+	for _, f := range []string{"all", "protocols", "mail"} {
+		owned.SetFlag(cliPath("facility " + f))
+	}
+	owned.SetSingle(cliPath("facility all level"), "notice")
+	owned.SetSingle(cliPath("facility protocols level"), "debug")
+	desired := configtree.NewLeaves()
+	desired.SetSingle(cliPath("facility all level"), "info")
+	desired.SetSingle(cliPath("facility protocols level"), "debug")
+
+	b := configtree.Diff(cliPath("system syslog global"), keepCovered(owned, desired), desired)
+	want := "delete system syslog global facility mail\nset system syslog global facility all level info"
+	if got := b.String(); got != want {
+		t.Fatalf("batch:\n%s\nwant:\n%s", got, want)
+	}
+}

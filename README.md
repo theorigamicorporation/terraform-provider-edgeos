@@ -285,7 +285,12 @@ source has its own example under [`examples/`](examples) and a page under
 | [`edgeos_static_interface_route`](docs/resources/static_interface_route.md) | a static route via an interface |
 | [`edgeos_wireguard_interface`](docs/resources/wireguard_interface.md) | a WireGuard interface |
 | [`edgeos_wireguard_peer`](docs/resources/wireguard_peer.md) | a WireGuard peer |
-| [`edgeos_system`](docs/resources/system.md) | host name, domain, time zone, name servers, NTP |
+| [`edgeos_system`](docs/resources/system.md) | host name, domain, time zone, name servers, NTP, analytics and crash reports |
+| [`edgeos_system_offload`](docs/resources/system_offload.md) | hardware offload (hwnat on the ER-X family, ipv4/ipv6 on Cavium models) |
+| [`edgeos_system_syslog`](docs/resources/system_syslog.md) | global syslog facilities and log rotation |
+| [`edgeos_system_syslog_host`](docs/resources/system_syslog_host.md) | a remote syslog server |
+| [`edgeos_system_syslog_file`](docs/resources/system_syslog_file.md) | an extra log file below `/var/log/user` |
+| [`edgeos_system_task_scheduler_task`](docs/resources/system_task_scheduler_task.md) | a scheduled task (interval or crontab spec) |
 | [`edgeos_system_login_user`](docs/resources/system_login_user.md) | a login user with a write-only password |
 | [`edgeos_system_login_user_public_key`](docs/resources/system_login_user_public_key.md) | an SSH public key of a login user |
 | [`edgeos_service_ssh`](docs/resources/service_ssh.md) | SSH server port, listen addresses, password logins |
@@ -420,6 +425,9 @@ UniFi gateways (USG, UDM, UXG) run different software and are not supported.
   `iptables-restore: line 2 failed`, while the same commands in an interactive
   session succeed. The web API is not affected; the planned SSH transport will
   use an interactive session for this reason.
+- **Offload knobs depend on the hardware.** `hwnat` only works on the MediaTek
+  models (ER-X family), the `ipv4`/`ipv6` knobs only on the Cavium models, but
+  EdgeOS accepts all of them everywhere. Some offload changes need a reboot.
 - **Non-admin users see less.** The API hides secrets such as WireGuard keys
   from operator level users, and they cannot commit. Use an admin user.
 

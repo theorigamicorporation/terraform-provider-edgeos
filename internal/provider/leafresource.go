@@ -148,6 +148,18 @@ func ownedOnDevice(device configtree.Leaves, keys ...configtree.Leaves) configtr
 	return out
 }
 
+// keepCovered drops the owned flags that desired still has leaves below,
+// such as a syslog facility whose level is configured. Otherwise the diff
+// would delete the whole node and leave its unchanged leaves unset.
+func keepCovered(owned, desired configtree.Leaves) configtree.Leaves {
+	for _, p := range owned.Paths() {
+		if v, _ := owned.Get(p); v.Kind == configtree.KindFlag && !desired.Has(p) && desired.HasUnder(p) {
+			owned.Delete(p)
+		}
+	}
+	return owned
+}
+
 // ownedKeys expands the Owned paths of m against the device leaves.
 func (r *leafResource[M]) ownedKeys(device configtree.Leaves, m *M) configtree.Leaves {
 	out := configtree.NewLeaves()
@@ -197,7 +209,7 @@ func (r *leafResource[M]) Create(ctx context.Context, req resource.CreateRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	b := configtree.Diff(base, ownedOnDevice(device, desired, r.ownedKeys(device, &plan)), desired)
+	b := configtree.Diff(base, keepCovered(ownedOnDevice(device, desired, r.ownedKeys(device, &plan)), desired), desired)
 	if !exists && b.Empty() {
 		// A tag instance without settings, such as a bare VLAN interface.
 		b.Set(base, configtree.Flag())
@@ -250,7 +262,8 @@ func (r *leafResource[M]) Update(ctx context.Context, req resource.UpdateRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	b := configtree.Diff(base, ownedOnDevice(device, prior, desired, r.ownedKeys(device, &state), r.ownedKeys(device, &plan)), desired)
+	owned := ownedOnDevice(device, prior, desired, r.ownedKeys(device, &state), r.ownedKeys(device, &plan))
+	b := configtree.Diff(base, keepCovered(owned, desired), desired)
 	if !r.apply(ctx, base, b, &resp.Diagnostics) {
 		return
 	}
