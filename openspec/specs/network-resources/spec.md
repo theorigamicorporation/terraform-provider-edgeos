@@ -44,6 +44,18 @@ The provider SHALL include `edgeos_firewall_name`, `edgeos_firewall_rule`, `edge
 - **WHEN** a WireGuard private or preshared key is configured inline
 - **THEN** it is marked sensitive and never shown in plan output
 
+#### Scenario: Imported WireGuard keys
+- **WHEN** a WireGuard interface or peer whose keys are file paths or inline keys on the router is imported and `private_key` or `preshared_key` is left out of the configuration (as `-generate-config-out` writes it)
+- **THEN** the next plan is empty and the router keeps its keys
+
+#### Scenario: Removing a preshared key
+- **WHEN** `preshared_key` is set to `""`
+- **THEN** the preshared key is deleted from the peer, while leaving the attribute out keeps it
+
+#### Scenario: Creating an interface without a private key
+- **WHEN** an `edgeos_wireguard_interface` is created or replaced without `private_key`
+- **THEN** plan fails and nothing is sent to the router
+
 ### Requirement: Global firewall settings
 The provider SHALL include `edgeos_firewall_settings`, which manages the options directly below `firewall` (`all-ping`, `broadcast-ping`, `ip-src-route`, `ipv6-src-route`, `ipv6-receive-redirects`, `log-martians`, `receive-redirects`, `send-redirects`, `source-validation`, `syn-cookies`), is imported with the ID `firewall`, and never changes rule sets or other nodes below `firewall`.
 

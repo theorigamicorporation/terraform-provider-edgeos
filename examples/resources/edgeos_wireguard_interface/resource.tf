@@ -1,5 +1,7 @@
 # Create the key on the router first, so it never leaves the device:
 #   umask 077 && wg genkey > /config/auth/wg0.key
+# private_key is needed to create the interface. For an imported interface it
+# can be left out, and the interface keeps the key it has.
 resource "edgeos_wireguard_interface" "wg0" {
   name        = "wg0"
   description = "Road warriors"

@@ -71,12 +71,16 @@ func wgPublicKey(s string) (string, bool) {
 }
 
 // wgKeyValidator checks a WireGuard key. With files, an absolute path to a
-// key file on the router is accepted as well.
-type wgKeyValidator struct{ files bool }
+// key file on the router is accepted as well, and with empty the empty string.
+type wgKeyValidator struct{ files, empty bool }
 
-func wireguardKey() validator.String       { return wgKeyValidator{} }
-func wireguardKeyOrFile() validator.String { return wgKeyValidator{files: true} }
+func wireguardKey() validator.String            { return wgKeyValidator{} }
+func wireguardKeyOrFile() validator.String      { return wgKeyValidator{files: true} }
+func wireguardKeyFileOrEmpty() validator.String { return wgKeyValidator{files: true, empty: true} }
 func (v wgKeyValidator) Description(context.Context) string {
+	if v.empty {
+		return "must be a base64 WireGuard key (44 characters), an absolute path to a key file on the router, such as /config/auth/wg0.psk, or \"\" for none"
+	}
 	if v.files {
 		return "must be a base64 WireGuard key (44 characters) or an absolute path to a key file on the router, such as /config/auth/wg0.key"
 	}
@@ -90,6 +94,9 @@ func (v wgKeyValidator) ValidateString(ctx context.Context, req validator.String
 		return
 	}
 	s := req.ConfigValue.ValueString()
+	if v.empty && s == "" {
+		return
+	}
 	// Base64 keys can start with '/', so a value that decodes to a key wins.
 	if _, err := parseWGKey(s); err == nil {
 		return

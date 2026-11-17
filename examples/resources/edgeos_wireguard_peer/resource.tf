@@ -15,7 +15,9 @@ resource "edgeos_wireguard_peer" "laptop" {
   preshared_key = "/config/auth/wg0-laptop.psk"
 }
 
-# A remote site the router connects to.
+# A remote site the router connects to. Without preshared_key the peer keeps
+# whatever preshared key the router has (none for a new peer); set
+# preshared_key = "" to remove one.
 resource "edgeos_wireguard_peer" "office" {
   interface            = edgeos_wireguard_interface.wg0.name
   public_key           = "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI="

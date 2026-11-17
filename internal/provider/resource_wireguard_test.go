@@ -258,6 +258,18 @@ func TestWireguardPeerMapping(t *testing.T) {
 	if !m.PresharedKey.IsNull() {
 		t.Errorf("missing psk = %v", m.PresharedKey)
 	}
+
+	// "" stands for no preshared key: no leaf, and it stays "" on read.
+	m = wireguardPeerModel{AllowedIPs: stringSet([]string{"10.8.0.2/32"}), PresharedKey: types.StringValue("")}
+	assertLeaves(t, wireguardPeerToLeaves(ctx, &m, &diags), map[string]configtree.Value{"allowed-ips": configtree.UnorderedMulti("10.8.0.2/32")})
+	wireguardPeerFromTree(ctx, map[string]any{"allowed-ips": []string{"10.8.0.2/32"}}, &m, &diags)
+	if !m.PresharedKey.Equal(types.StringValue("")) {
+		t.Errorf("empty psk = %v", m.PresharedKey)
+	}
+	wireguardPeerFromTree(ctx, map[string]any{"allowed-ips": []string{"10.8.0.2/32"}, "preshared-key": "/config/auth/p.psk"}, &m, &diags)
+	if m.PresharedKey.ValueString() != "/config/auth/p.psk" {
+		t.Errorf("psk added on the router = %v", m.PresharedKey)
+	}
 }
 
 func TestWireguardPeerImport(t *testing.T) {
@@ -578,6 +590,8 @@ resource "edgeos_wireguard_peer" "x" {
 		want string
 	}{
 		{iface(`private_key = "not-a-key"`), `Invalid WireGuard key`},
+		{iface(`listen_port = 51820`), `(?s)Missing private key.*must be set when the interface is created`},
+		{iface(`private_key = ""`), `Invalid WireGuard key`},
 		{iface(`private_key = "/config/auth/../wg0.key"`), `Invalid key file path`},
 		{iface(`private_key = "/config/auth/my key"`), `Invalid key file path`},
 		{iface(`private_key = "` + priv[:43] + `"`), `Invalid WireGuard key`},
@@ -685,11 +699,242 @@ func TestWireguardKeyStartingWithSlash(t *testing.T) {
 		}
 	}
 	ctx := context.Background()
-	for _, v := range []validator.String{wireguardKey(), wireguardKeyOrFile()} {
+	for _, v := range []validator.String{wireguardKey(), wireguardKeyOrFile(), wireguardKeyFileOrEmpty()} {
 		resp := &validator.StringResponse{}
 		v.ValidateString(ctx, validator.StringRequest{Path: path.Root("k"), ConfigValue: types.StringValue(key)}, resp)
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("key %q rejected: %v", key, resp.Diagnostics)
 		}
 	}
+}
+
+func TestWireguardKeyValidatorEmpty(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, tc := range []struct {
+		v     validator.String
+		value string
+		ok    bool
+	}{
+		{wireguardKeyFileOrEmpty(), "", true},
+		{wireguardKeyFileOrEmpty(), "/config/auth/wg0.psk", true},
+		{wireguardKeyFileOrEmpty(), "/config/../wg0.psk", false},
+		{wireguardKeyFileOrEmpty(), "short", false},
+		{wireguardKeyOrFile(), "", false},
+		{wireguardKey(), "", false},
+	} {
+		resp := &validator.StringResponse{}
+		tc.v.ValidateString(ctx, validator.StringRequest{Path: path.Root("k"), ConfigValue: types.StringValue(tc.value)}, resp)
+		if resp.Diagnostics.HasError() == tc.ok {
+			t.Errorf("%s / %q: diags %v", tc.v.Description(ctx), tc.value, resp.Diagnostics)
+		}
+	}
+}
+
+func TestKeptSecret(t *testing.T) {
+	t.Parallel()
+	file := types.StringValue("/config/auth/wg0.key")
+	other := types.StringValue("/config/auth/wg1.key")
+	for _, tc := range []struct {
+		name          string
+		config, state types.String
+		exists        bool
+		want          types.String
+	}{
+		{"configured", other, file, true, other},
+		{"left out keeps the state", types.StringNull(), file, true, file},
+		{"left out keeps no key", types.StringNull(), types.StringNull(), true, types.StringNull()},
+		{"create without a value", types.StringNull(), types.StringNull(), false, types.StringNull()},
+		{"create", file, types.StringNull(), false, file},
+		{"unknown", types.StringUnknown(), file, true, types.StringUnknown()},
+		{"empty", types.StringValue(""), file, true, types.StringValue("")},
+	} {
+		if got := keptSecret(tc.config, tc.state, tc.exists); !got.Equal(tc.want) {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Importing an interface and a peer whose keys are file paths on the router,
+// with the keys left out of the configuration as -generate-config-out writes
+// it, plans no change, and leaving the preshared key out never removes it.
+func TestAccWireguardImportKeyFiles(t *testing.T) {
+	e := newAccEnv(t)
+	pub := testWGKeyWith(t)
+	priv, privPub := testWGKey(t)
+	psk, _ := testWGKey(t)
+	base := "interfaces wireguard wg0"
+	peerPath := base + " peer " + pub
+	seed := func() {
+		e.set(base+" address", configtree.Multi("10.8.0.1/24"))()
+		e.set(base+" listen-port", configtree.Single("51820"))()
+		e.set(base+" private-key", configtree.Single("/config/auth/wg0.key"))()
+		e.set(peerPath+" allowed-ips", configtree.Multi("10.8.0.2/32"))()
+		e.set(peerPath+" description", configtree.Single("laptop"))()
+		e.set(peerPath+" preshared-key", configtree.Single("/config/auth/wg0-laptop.psk"))()
+	}
+	body := func(peerDesc, peerExtra string) string {
+		return fmt.Sprintf(`
+resource "edgeos_wireguard_interface" "wg0" {
+  name        = "wg0"
+  addresses   = ["10.8.0.1/24"]
+  listen_port = 51820
+}
+
+resource "edgeos_wireguard_peer" "laptop" {
+  interface   = edgeos_wireguard_interface.wg0.name
+  public_key  = %q
+  allowed_ips = ["10.8.0.2/32"]
+  description = %q
+  %s
+}
+`, pub, peerDesc, peerExtra)
+	}
+	imports := fmt.Sprintf(`
+import {
+  to = edgeos_wireguard_interface.wg0
+  id = "wg0"
+}
+
+import {
+  to = edgeos_wireguard_peer.laptop
+  id = "wg0:%s"
+}
+`, pub)
+	ifaceAddr, peerAddr := "edgeos_wireguard_interface.wg0", "edgeos_wireguard_peer.laptop"
+	keysKept := resource.ComposeAggregateTestCheckFunc(
+		e.checkValue(base+" private-key", "/config/auth/wg0.key"),
+		e.checkValue(peerPath+" preshared-key", "/config/auth/wg0-laptop.psk"),
+	)
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             e.destroyed(base),
+		Steps: []resource.TestStep{
+			{
+				// An import block with the keys left out plans no change.
+				PreConfig:       seed,
+				Config:          e.importBlockConfig(body("laptop", "")),
+				ResourceName:    ifaceAddr,
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
+				ImportStateId:   "wg0",
+				ImportPlanChecks: resource.ImportPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectKnownValue(ifaceAddr, tfjsonpath.New("private_key"), knownvalue.StringExact("/config/auth/wg0.key")),
+					plancheck.ExpectKnownValue(ifaceAddr, tfjsonpath.New("public_key"), knownvalue.Null()),
+				}},
+			},
+			{
+				// Applying the import blocks, then planning again, changes nothing.
+				Config: e.importBlockConfig(body("laptop", "") + imports),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(ifaceAddr, plancheck.ResourceActionNoop),
+					plancheck.ExpectResourceAction(peerAddr, plancheck.ResourceActionNoop),
+				}},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(ifaceAddr, tfjsonpath.New("private_key"), knownvalue.StringExact("/config/auth/wg0.key")),
+					statecheck.ExpectKnownValue(peerAddr, tfjsonpath.New("preshared_key"), knownvalue.StringExact("/config/auth/wg0-laptop.psk")),
+				},
+				Check: keysKept,
+			},
+			{
+				// The peer's import block with preshared_key left out (import
+				// steps after the first one need state, hence the order).
+				Config:          e.importBlockConfig(body("laptop", "")),
+				ResourceName:    peerAddr,
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
+				ImportStateId:   "wg0:" + pub,
+				ImportPlanChecks: resource.ImportPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectKnownValue(peerAddr, tfjsonpath.New("preshared_key"), knownvalue.StringExact("/config/auth/wg0-laptop.psk")),
+				}},
+			},
+			{
+				// And with the config from -generate-config-out, which has
+				// private_key = null and preshared_key = null.
+				Config:          e.importBlockConfig(""),
+				ResourceName:    ifaceAddr,
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
+				ImportStateId:   "wg0",
+				GenerateConfig:  true,
+			},
+			{
+				Config:          e.importBlockConfig(""),
+				ResourceName:    peerAddr,
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
+				ImportStateId:   "wg0:" + pub,
+				GenerateConfig:  true,
+			},
+			{
+				Config: e.config(body("laptop", "")),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectEmptyPlan(),
+				}},
+			},
+			{
+				// Updating both with the keys left out keeps the keys.
+				Config: e.config(strings.Replace(body("laptop 2", ""), "listen_port = 51820", "listen_port = 51821", 1)),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(ifaceAddr, plancheck.ResourceActionUpdate),
+					plancheck.ExpectResourceAction(peerAddr, plancheck.ResourceActionUpdate),
+					plancheck.ExpectKnownValue(peerAddr, tfjsonpath.New("preshared_key"), knownvalue.StringExact("/config/auth/wg0-laptop.psk")),
+				}},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					keysKept,
+					e.checkValue(base+" listen-port", "51821"),
+					e.checkValue(peerPath+" description", "laptop 2"),
+				),
+			},
+			{
+				// An inline key put on the router by hand is picked up, stays
+				// sensitive and gives the public key, without a diff.
+				PreConfig: e.set(base+" private-key", configtree.Single(priv)),
+				Config:    e.config(strings.Replace(body("laptop 2", ""), "listen_port = 51820", "listen_port = 51821", 1)),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectEmptyPlan(),
+				}},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(ifaceAddr, "private_key", priv),
+					resource.TestCheckResourceAttr(ifaceAddr, "public_key", privPub),
+					e.checkValue(base+" private-key", priv),
+				),
+			},
+			{
+				// "" removes the preshared key.
+				Config: e.config(body("laptop", `preshared_key = ""`)),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(peerAddr, plancheck.ResourceActionUpdate),
+				}},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					e.checkAbsent(peerPath+" preshared-key"),
+					e.checkValue(base+" private-key", priv),
+				),
+			},
+			{
+				// Leaving it out again keeps the peer without one.
+				Config: e.config(body("laptop", "")),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectEmptyPlan(),
+				}},
+				Check: e.checkAbsent(peerPath + " preshared-key"),
+			},
+			{
+				Config: e.config(body("laptop", fmt.Sprintf("preshared_key = %q", psk))),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(peerAddr, plancheck.ResourceActionUpdate),
+					plancheck.ExpectSensitiveValue(peerAddr, tfjsonpath.New("preshared_key")),
+				}},
+				Check: e.checkValue(peerPath+" preshared-key", psk),
+			},
+			{
+				// Dropping an inline preshared key from the config keeps it too.
+				Config: e.config(body("laptop", "")),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectEmptyPlan(),
+				}},
+				Check: e.checkValue(peerPath+" preshared-key", psk),
+			},
+		},
+	})
 }

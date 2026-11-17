@@ -30,7 +30,9 @@ resource "edgeos_wireguard_peer" "laptop" {
   preshared_key = "/config/auth/wg0-laptop.psk"
 }
 
-# A remote site the router connects to.
+# A remote site the router connects to. Without preshared_key the peer keeps
+# whatever preshared key the router has (none for a new peer); set
+# preshared_key = "" to remove one.
 resource "edgeos_wireguard_peer" "office" {
   interface            = edgeos_wireguard_interface.wg0.name
   public_key           = "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI="
@@ -56,7 +58,7 @@ resource "edgeos_wireguard_peer" "office" {
 - `disabled` (Boolean) Keep the peer in the config but switch it off (the `disable` node). Defaults to `false`.
 - `endpoint` (String) Where to reach the peer, as `host:port`, such as `vpn.example.com:51820`, `203.0.113.10:51820` or `[2001:db8::1]:51820`. Leave unset for road warriors that connect to the router.
 - `persistent_keepalive` (Number) Send a keepalive every this many seconds, which keeps NAT mappings open. 25 is a common value.
-- `preshared_key` (String, Sensitive) Optional preshared key for extra protection: the base64 key or an absolute path to a file on the router, such as `/config/auth/wg0-laptop.psk`. If the router hides the value from the API session, the configured value is kept in state.
+- `preshared_key` (String, Sensitive) Optional preshared key for extra protection: the base64 key or an absolute path to a file on the router, such as `/config/auth/wg0-laptop.psk`. Leaving it out keeps whatever the router has, so an imported peer keeps its preshared key (and a new peer gets none). Set it to `""` to remove the preshared key from the peer. If the router hides the value from the API session, the configured value is kept in state.
 
 ### Read-Only
 
