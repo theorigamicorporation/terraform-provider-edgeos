@@ -23,6 +23,7 @@ reason nobody has built one properly.
   `edgeos_port_forward_settings`, `edgeos_interface_ethernet`,
   `edgeos_interface_vif`, `edgeos_dhcp_shared_network`,
   `edgeos_dhcp_static_mapping`, `edgeos_static_route`,
+  `edgeos_static_interface_route`,
   `edgeos_wireguard_interface`, `edgeos_wireguard_peer`, `edgeos_system`.
 - Data sources: `edgeos_config`, `edgeos_system_info`.
 - A fake EdgeOS API server (in-memory config tree with commit validation and
