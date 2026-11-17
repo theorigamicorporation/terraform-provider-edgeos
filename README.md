@@ -1,17 +1,22 @@
 # EdgeOS provider for Terraform and OpenTofu
 
-[![CI](https://github.com/theorigamicorporation/terraform-provider-edgeos/actions/workflows/ci.yml/badge.svg)](https://github.com/theorigamicorporation/terraform-provider-edgeos/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/theorigamicorporation/terraform-provider-edgeos?sort=semver)](https://github.com/theorigamicorporation/terraform-provider-edgeos/releases)
-[![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE)
+[![CI](https://github.com/theorigamicorporation/terraform-provider-edgeos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/theorigamicorporation/terraform-provider-edgeos/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/theorigamicorporation/terraform-provider-edgeos?sort=semver)](https://github.com/theorigamicorporation/terraform-provider-edgeos/releases/latest)
+[![Terraform Registry](https://img.shields.io/badge/terraform-registry-7B42BC?logo=terraform)](https://registry.terraform.io/providers/theorigamicorporation/edgeos/latest)
+[![OpenTofu Registry](https://img.shields.io/badge/opentofu-registry-FFDA18?logo=opentofu)](https://search.opentofu.org/provider/theorigamicorporation/edgeos/latest)
+[![Go version](https://img.shields.io/github/go-mod/go-version/theorigamicorporation/terraform-provider-edgeos)](go.mod)
 [![Go Report Card](https://goreportcard.com/badge/github.com/theorigamicorporation/terraform-provider-edgeos)](https://goreportcard.com/report/github.com/theorigamicorporation/terraform-provider-edgeos)
+[![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE)
 
-Manage Ubiquiti EdgeRouter configuration (EdgeOS) as code: firewall rule sets,
-NAT, port forwards, interfaces and VLANs, DHCP, static routes, WireGuard and
-system settings, plus a generic resource for any other config node.
+Manage a Ubiquiti EdgeRouter as code. Firewall rule sets, NAT, port forwards,
+interfaces and VLANs, DHCP, static routes, WireGuard and system settings each
+have a resource, and `edgeos_config` covers any other node of the EdgeOS
+config tree. Changes go through the same API the EdgeOS web UI uses and are
+committed atomically, so a rejected change leaves the router as it was.
 
-One provider binary serves both tools. The source address
-`theorigamicorporation/edgeos` works in Terraform and in OpenTofu, and both
-registries publish the same signed release assets.
+One binary serves Terraform and OpenTofu: the source address
+`theorigamicorporation/edgeos` works in both, and both registries publish the
+same signed release assets.
 
 ## Install
 
@@ -47,6 +52,8 @@ It is the same block. OpenTofu resolves the short address against
 
 ## Quick start
 
+An EdgeRouter X with the ISP on VLAN 100 of `eth0` and the LAN on `eth1`:
+
 ```hcl
 provider "edgeos" {
   host     = "192.168.1.1"
@@ -57,7 +64,7 @@ provider "edgeos" {
 
 resource "edgeos_firewall_name" "wan_local" {
   name           = "WAN_LOCAL"
-  description    = "WAN to router"
+  description    = "Internet to the router"
   default_action = "drop"
 }
 
@@ -73,19 +80,55 @@ resource "edgeos_firewall_rule" "wan_local_established" {
 
 resource "edgeos_firewall_rule" "wan_local_wireguard" {
   ruleset  = edgeos_firewall_name.wan_local.name
-  number   = 30
+  number   = 20
   action   = "accept"
   protocol = "udp"
   destination = {
     port = "51820"
   }
 }
+
+resource "edgeos_interface_vif" "wan" {
+  interface      = "eth0"
+  vlan           = 100
+  description    = "ISP WAN"
+  addresses      = ["dhcp"]
+  firewall_local = edgeos_firewall_name.wan_local.name
+}
+
+resource "edgeos_nat_rule" "masquerade" {
+  number             = 5000
+  type               = "masquerade"
+  description        = "LAN to the internet"
+  outbound_interface = "eth0.100"
+  depends_on         = [edgeos_interface_vif.wan]
+}
+
+resource "edgeos_dhcp_shared_network" "lan" {
+  name          = "LAN"
+  authoritative = true
+  subnets = {
+    "192.168.1.0/24" = {
+      default_router = "192.168.1.1"
+      dns_servers    = ["192.168.1.1"]
+      ranges         = [{ start = "192.168.1.100", stop = "192.168.1.199" }]
+    }
+  }
+}
+
+resource "edgeos_dhcp_static_mapping" "nas" {
+  shared_network = edgeos_dhcp_shared_network.lan.name
+  subnet         = "192.168.1.0/24"
+  name           = "nas"
+  ip_address     = "192.168.1.20"
+  mac_address    = "02:00:5e:00:53:20"
+}
 ```
 
-A complete example with a VLAN WAN, firewall, NAT, port forwards, DHCP and
-WireGuard is in [`examples/full`](examples/full). Every resource and data
-source has its own example under [`examples/`](examples) and a page under
-[`docs/`](docs).
+`terraform plan` (or `tofu plan`) then shows exactly which EdgeOS nodes change.
+A complete office setup with port forwards, a guest VLAN and WireGuard is in
+[`examples/full`](examples/full); every resource and data source has its own
+example under [`examples/`](examples) and a page under [`docs/`](docs).
 
 ## Resources and data sources
 
@@ -113,7 +156,7 @@ source has its own example under [`examples/`](examples) and a page under
 | [`edgeos_config`](docs/data-sources/config.md) | any config node, or whether it exists |
 | [`edgeos_system_info`](docs/data-sources/system_info.md) | firmware version, platform, host name |
 
-## Authentication
+## Authentication and connection
 
 | Attribute        | Environment variable    | Default |
 |------------------|-------------------------|---------|
@@ -143,7 +186,7 @@ The certificate has to be valid for the host name or IP you connect to. The
 factory certificate of many EdgeRouters is not, in which case `insecure = true`
 is the only option until you install a proper one.
 
-## How it talks to the router
+## Transport
 
 EdgeOS has no documented API. The provider uses the JSON API that the EdgeOS
 web UI itself uses:
@@ -160,9 +203,9 @@ web UI itself uses:
 Writes from one provider instance are serialised, because EdgeOS fails when two
 commits overlap. Terraform still plans and reads in parallel.
 
-An SSH transport (Vyatta CLI through an interactive session) is planned; the
-`transport` attribute already exists for it. Until then `save = false` is
-rejected, because the web API always saves.
+`api` is the only transport today. An SSH transport driving the Vyatta CLI is
+planned, and the `transport` attribute already exists for it. Until then
+`save = false` is rejected, because the web API always saves.
 
 ## Ownership rules
 
@@ -189,34 +232,63 @@ resource "edgeos_config" "dns_cache" {
 
 ## Supported routers
 
-Tested against EdgeOS 3.0.x on an EdgeRouter X (ER-X, platform `e50`). The web
-API has been stable since EdgeOS 1.x, so 2.0.x and other EdgeRouter models
-(ER-4, ER-6P, ER-12, ER Lite, ER Infinity) are expected to work; reports are
-welcome. UniFi gateways (USG, UDM) run different software and are not
-supported.
+| | |
+|---|---|
+| Tested | EdgeOS 3.0.x on an EdgeRouter X (ER-X, platform `e50`) |
+| Expected to work | EdgeOS 2.0.x and 1.10.x, and the other EdgeRouters: ER-X SFP, ER-10X, ER-4, ER-6P, ER-12, ER Lite, ER PoE, ER-8, ER Pro, ER Infinity |
+| Not supported | UniFi gateways (USG, UDM, UXG), which run different software |
+
+The web API has not changed in a breaking way since EdgeOS 1.x. If you run the
+provider on another model or release, a short note in an issue helps.
+
+Terraform 1.13 and later and OpenTofu 1.11 and later are tested in CI.
 
 ## Limitations
 
-- IPv6 firewall (`firewall ipv6-name`), zone policies, QoS, VPNs other than
-  WireGuard and many services have no dedicated resource yet. Use
-  `edgeos_config` for them.
-- EdgeOS rejects values containing a double quote; the provider checks this at
-  plan time.
-- Login passwords cannot be read back (EdgeOS stores a hash and blanks the
-  plaintext), so they cannot be managed through `edgeos_config` trees.
-- The batch API saves every commit; there is no commit-only mode yet.
+- No dedicated resources yet for the IPv6 firewall (`firewall ipv6-name`),
+  firewall groups, zone policies, QoS, VPNs other than WireGuard, DNS
+  forwarding and dynamic DNS. Manage them with `edgeos_config`.
+- The web API saves every commit to `config.boot`; there is no commit-only
+  mode until the SSH transport exists.
+- Destroying a named node (a rule set, a VLAN, a DHCP network) deletes it with
+  everything below it, including children Terraform does not manage.
+- The router serialises commits, so large plans apply one resource at a time.
+
+## EdgeOS quirks worth knowing
+
+- **Double quotes are not allowed in any value.** EdgeOS rejects them with
+  "Cannot use the double quote character in a value string". The provider
+  catches this at plan time.
+- **Passwords need a symbol.** EdgeOS 3.x refuses a `plaintext-password` made
+  only of letters and digits.
+- **Passwords cannot be read back.** After a commit EdgeOS stores a hash in
+  `encrypted-password` and keeps `plaintext-password ""` next to it.
+  `edgeos_system_login_user` treats the password as write-only; do not manage
+  passwords through an `edgeos_config` tree.
+- **Multi-valued nodes are lists.** Nodes such as `address`, `name-server` or
+  `dns-server` come back as lists even with one value. In an `edgeos_config`
+  tree write them as lists, or every plan shows a change.
+- **Script commits break firewall changes on 3.0.1.** Commits run through
+  `/opt/vyatta/etc/functions/script-template` fail for firewall rule sets with
+  `iptables-restore: line 2 failed`, while the same commands in an interactive
+  session succeed. The web API is not affected; the planned SSH transport will
+  use an interactive session for this reason.
+- **Non-admin users see less.** The API hides secrets such as WireGuard keys
+  from operator level users, and they cannot commit. Use an admin user.
 
 ## Development
 
-Toolchain versions are pinned in [`.tool-versions`](.tool-versions); run
-`asdf install` to get the same Go, golangci-lint, Terraform, OpenTofu, just and
-goreleaser that CI uses. [`just`](https://just.systems) is the entry point:
+Toolchain versions are pinned in [`.tool-versions`](.tool-versions) and CI
+reads the same file. Run `asdf install` to get the same Go, golangci-lint,
+Terraform, OpenTofu, just and goreleaser. [`just`](https://just.systems) is the
+entry point:
 
 ```sh
 just              # list recipes
 just test         # unit tests with the race detector
 just testacc      # acceptance tests against the fake router, Terraform and OpenTofu
-just cover        # coverage report with the 80% gate
+just lint         # golangci-lint
+just cover        # coverage report with the 80% gate (CI enforces it)
 just docs         # regenerate docs/
 just fake-server  # run the fake EdgeOS API locally
 just install      # install the provider and print dev_overrides snippets
@@ -230,6 +302,14 @@ To try the examples without a router, start `just fake-server` in one terminal,
 export the variables it prints, run `just install`, set up `dev_overrides` as
 shown, and run `terraform plan` or `tofu plan` in an example directory.
 
+## Contributing and security
+
+Bug reports, model and firmware reports and pull requests are welcome; see
+[CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately as
+described in [SECURITY.md](SECURITY.md). This project follows the
+[Contributor Covenant](CODE_OF_CONDUCT.md). Changes are listed in
+[CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
-[MPL-2.0](LICENSE)
+[Mozilla Public License 2.0](LICENSE)
