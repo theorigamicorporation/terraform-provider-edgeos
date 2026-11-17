@@ -27,10 +27,12 @@ import (
 //   - Create, Update and Delete only touch leaves that ToLeaves produces for
 //     the plan or the prior state. Anything else below the base path (rules
 //     below a firewall name, unmodelled options) is left alone.
-//   - For tag instances (Singleton false) Create fails if the node exists and
-//     Delete removes the whole node.
-//   - For singletons (system, a physical interface) Create adopts the node
-//     and Delete only removes the owned leaves.
+//   - By default the resource is a tag instance: Create fails if the node
+//     exists and Delete removes the whole node.
+//   - With Adopt, Create takes over an existing node and Delete only removes
+//     the owned leaves (system settings, port-forward settings).
+//   - With MustExist, the node has to exist already (physical interfaces);
+//     it implies Adopt.
 type leafSpec[M any] struct {
 	// Name is the type name without the provider prefix, e.g. "firewall_name".
 	Name   string
@@ -50,8 +52,11 @@ type leafSpec[M any] struct {
 	ImportAttrs func(id string) (map[string]attr.Value, error)
 	// ImportHint is shown in the import error, e.g. "<ruleset>:<number>".
 	ImportHint string
-	// Singleton marks nodes that always exist on the device.
-	Singleton bool
+	// Adopt makes Create take over an existing node and Delete remove only
+	// the owned leaves.
+	Adopt bool
+	// MustExist refuses to create the node; it implies Adopt.
+	MustExist bool
 	// Validate runs extra plan-time checks across attributes.
 	Validate func(ctx context.Context, m *M, diags *diag.Diagnostics)
 }
@@ -109,13 +114,20 @@ func clientFrom(data any, diags *diag.Diagnostics) *client.Client {
 	return pd.client
 }
 
-// ownedOnDevice returns the device leaves below base that are in keys.
+// ownedOnDevice returns the device leaves below base that are in keys. A key
+// that is a flag (a valueless node or a tag instance such as an NTP server)
+// also counts as present when the device has children below it, so removing
+// it from the config deletes the whole node.
 func ownedOnDevice(device configtree.Leaves, keys ...configtree.Leaves) configtree.Leaves {
 	out := configtree.NewLeaves()
 	for _, k := range keys {
 		for _, p := range k.Paths() {
 			if v, ok := device.Get(p); ok {
 				out.Set(p, v)
+				continue
+			}
+			if kv, _ := k.Get(p); kv.Kind == configtree.KindFlag && device.HasUnder(p) {
+				out.Set(p, configtree.Flag())
 			}
 		}
 	}
@@ -134,13 +146,14 @@ func (r *leafResource[M]) Create(ctx context.Context, req resource.CreateRequest
 		addClientError(&resp.Diagnostics, "read", base, err)
 		return
 	}
-	if exists && !r.spec.Singleton {
+	adopt := r.spec.Adopt || r.spec.MustExist
+	if exists && !adopt {
 		resp.Diagnostics.AddError("Already exists",
 			fmt.Sprintf("%q already exists on the router. Import it instead of creating it, for example with an import block using id %q.",
 				base.String(), r.spec.ID(&plan)))
 		return
 	}
-	if !exists && r.spec.Singleton {
+	if !exists && r.spec.MustExist {
 		resp.Diagnostics.AddError("Not found",
 			fmt.Sprintf("%q does not exist on the router, and this resource can only manage existing nodes.", base.String()))
 		return
@@ -226,7 +239,7 @@ func (r *leafResource[M]) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 	b := configtree.NewBatch()
-	if r.spec.Singleton {
+	if r.spec.Adopt || r.spec.MustExist {
 		owned := ownedOnDevice(device, r.spec.ToLeaves(ctx, &state, &resp.Diagnostics))
 		for _, p := range owned.Paths() {
 			b.Delete(base.Child(p...))
