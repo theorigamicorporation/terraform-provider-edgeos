@@ -64,7 +64,7 @@ resource "edgeos_interface_vif" "guest" {
 
 - `addresses` (Set of String) Addresses of the VLAN interface: addresses with prefix length such as `192.0.2.1/24` or `2001:db8::1/64`, or `dhcp` / `dhcpv6` to use a DHCP client.
 - `description` (String) Free text description.
-- `dhcp_options` (Attributes) DHCP client options, used with `addresses = ["dhcp"]`. Client and global options (`client-option`, `global-option`) are not managed here and are left alone. (see [below for nested schema](#nestedatt--dhcp_options))
+- `dhcp_options` (Attributes) DHCP client options, used with `addresses = ["dhcp"]`. (see [below for nested schema](#nestedatt--dhcp_options))
 - `disabled` (Boolean) Keep the VLAN interface in the config but switch it off (the `disable` node). Defaults to `false`.
 - `firewall_in` (String) Name of the IPv4 firewall rule set applied to traffic coming in on the interface and forwarded (`firewall in name`). The rule set has to exist, usually `edgeos_firewall_name.x.name`; EdgeOS refuses the commit otherwise.
 - `firewall_local` (String) Name of the IPv4 firewall rule set applied to traffic coming in on the interface for the router itself (`firewall local name`). The rule set has to exist, usually `edgeos_firewall_name.x.name`; EdgeOS refuses the commit otherwise.
@@ -81,13 +81,24 @@ resource "edgeos_interface_vif" "guest" {
 
 Optional:
 
+- `client_options` (List of String) Lines EdgeOS adds to the interface section of `dhclient.conf` (`dhcp-options client-option`), in order, such as `send dhcp-client-identifier 01:02:00:5e:00:53:01;`. Double quotes are not allowed, so write strings as hex bytes. When unset, `edgeos_interface_ethernet` and `edgeos_interface_switch` leave existing lines alone, while `edgeos_interface_vif`, which owns its VLAN interface, removes them.
 - `default_route` (Boolean) Install the default route the DHCP server hands out. `true` writes `update`, `false` writes `no-update`.
 - `default_route_distance` (Number) Administrative distance of the default route learned from DHCP, from 1 to 255.
+- `global_options` (List of String) Lines EdgeOS adds to the global section of `dhclient.conf` (`dhcp-options global-option`), in order, such as `option rfc3442-classless-static-routes code 121 = array of unsigned integer 8;`. Double quotes are not allowed, so write strings as hex bytes. When unset, `edgeos_interface_ethernet` and `edgeos_interface_switch` leave existing lines alone, while `edgeos_interface_vif`, which owns its VLAN interface, removes them.
 - `name_server` (Boolean) Use the DNS servers the DHCP server hands out. `true` writes `update`, `false` writes `no-update`.
 
 ## Import
 
 Import is supported using the following syntax:
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+```terraform
+import {
+  to = edgeos_interface_vif.example
+  id = "eth0.100"
+}
+```
 
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 

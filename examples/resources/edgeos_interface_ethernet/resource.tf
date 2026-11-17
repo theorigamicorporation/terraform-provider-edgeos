@@ -36,3 +36,18 @@ resource "edgeos_interface_ethernet" "spare" {
   name     = "eth4"
   disabled = true
 }
+
+# An ISP that wants to see its own box: the client identifier and vendor
+# class are sent as hex because EdgeOS refuses double quotes in values.
+resource "edgeos_interface_ethernet" "fibre" {
+  name      = "eth3"
+  addresses = ["dhcp"]
+
+  dhcp_options = {
+    default_route = true
+    client_options = [
+      "send dhcp-client-identifier 01:02:00:5e:00:53:01;",
+      "send vendor-class-identifier 75:64:68:63:70:20:31:2e:32:35:2e:31;",
+    ]
+  }
+}

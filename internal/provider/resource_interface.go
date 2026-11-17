@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -44,6 +45,63 @@ type dhcpOptionsModel struct {
 	DefaultRoute         types.Bool  `tfsdk:"default_route"`
 	DefaultRouteDistance types.Int64 `tfsdk:"default_route_distance"`
 	NameServer           types.Bool  `tfsdk:"name_server"`
+	ClientOptions        types.List  `tfsdk:"client_options"`
+	GlobalOptions        types.List  `tfsdk:"global_options"`
+}
+
+func (d *dhcpOptionsModel) empty() bool {
+	return allNull(d.DefaultRoute, d.DefaultRouteDistance, d.NameServer, d.ClientOptions, d.GlobalOptions)
+}
+
+// dhcpClientOptionValidator checks a line EdgeOS copies into dhclient.conf.
+// EdgeOS refuses double quotes in any value, which is the usual way to write
+// a string in dhclient.conf, so the error explains the hex form instead.
+type dhcpClientOptionValidator struct{}
+
+func dhcpClientOption() validator.String { return dhcpClientOptionValidator{} }
+
+func (dhcpClientOptionValidator) Description(context.Context) string {
+	return "must be a dhclient.conf statement without double quotes"
+}
+
+func (v dhcpClientOptionValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (dhcpClientOptionValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if !known(req.ConfigValue) {
+		return
+	}
+	s := req.ConfigValue.ValueString()
+	if strings.ContainsRune(s, '"') {
+		resp.Diagnostics.AddAttributeError(req.Path, "Double quotes in a DHCP option",
+			fmt.Sprintf("%q contains a double quote, which EdgeOS refuses in any value. Write strings as colon separated hex "+
+				"bytes instead, for example `send vendor-class-identifier 75:64:68:63:70:20:31:2e:32:35:2e:31;` for \"udhcp 1.25.1\".", s))
+		return
+	}
+	if strings.TrimSpace(s) == "" {
+		resp.Diagnostics.AddAttributeError(req.Path, "Empty DHCP option", "The option must not be empty.")
+		return
+	}
+	if err := configtree.ValidateValue(s); err != nil {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid EdgeOS value", err.Error())
+	}
+}
+
+func dhcpOptionLines(node, section, example string) schema.ListAttribute {
+	return schema.ListAttribute{
+		MarkdownDescription: fmt.Sprintf("Lines EdgeOS adds to the %s of `dhclient.conf` (`dhcp-options %s`), in order, "+
+			"such as `%s`. Double quotes are not allowed, so write strings as hex bytes. When unset, "+
+			"`edgeos_interface_ethernet` and `edgeos_interface_switch` leave existing lines alone, while "+
+			"`edgeos_interface_vif`, which owns its VLAN interface, removes them.", section, node, example),
+		Optional:    true,
+		ElementType: types.StringType,
+		Validators: []validator.List{
+			listvalidator.SizeAtLeast(1),
+			listvalidator.UniqueValues(),
+			listvalidator.ValueStringsAre(dhcpClientOption()),
+		},
+	}
 }
 
 // addressValidator accepts an address with prefix length or dhcp/dhcpv6.
@@ -106,9 +164,8 @@ func ifaceAttributes(what string, disabled schema.BoolAttribute) map[string]sche
 		"firewall_out":   fw("out", "traffic forwarded out of the interface"),
 		"firewall_local": fw("local", "traffic coming in on the interface for the router itself"),
 		"dhcp_options": schema.SingleNestedAttribute{
-			MarkdownDescription: "DHCP client options, used with `addresses = [\"dhcp\"]`. Client and global options " +
-				"(`client-option`, `global-option`) are not managed here and are left alone.",
-			Optional: true,
+			MarkdownDescription: "DHCP client options, used with `addresses = [\"dhcp\"]`.",
+			Optional:            true,
 			Attributes: map[string]schema.Attribute{
 				"default_route": schema.BoolAttribute{
 					MarkdownDescription: "Install the default route the DHCP server hands out. `true` writes `update`, `false` writes `no-update`.",
@@ -123,6 +180,8 @@ func ifaceAttributes(what string, disabled schema.BoolAttribute) map[string]sche
 					MarkdownDescription: "Use the DNS servers the DHCP server hands out. `true` writes `update`, `false` writes `no-update`.",
 					Optional:            true,
 				},
+				"client_options": dhcpOptionLines("client-option", "interface section", "send dhcp-client-identifier 01:02:00:5e:00:53:01;"),
+				"global_options": dhcpOptionLines("global-option", "global section", "option rfc3442-classless-static-routes code 121 = array of unsigned integer 8;"),
 			},
 		},
 	}
@@ -159,6 +218,8 @@ func ifaceToLeaves(ctx context.Context, l configtree.Leaves, s *ifaceSettings, d
 		putUpdate(l, d.DefaultRoute, "dhcp-options", "default-route")
 		putInt(l, d.DefaultRouteDistance, "dhcp-options", "default-route-distance")
 		putUpdate(l, d.NameServer, "dhcp-options", "name-server")
+		putStrings(ctx, l, d.ClientOptions, diags, "dhcp-options", "client-option")
+		putStrings(ctx, l, d.GlobalOptions, diags, "dhcp-options", "global-option")
 	}
 }
 
@@ -197,9 +258,9 @@ func ifaceFromTree(tree any, s *ifaceSettings, all bool, diags *diag.Diagnostics
 		if !all {
 			return
 		}
-		prior = &dhcpOptionsModel{}
+		prior = &dhcpOptionsModel{ClientOptions: types.ListNull(types.StringType), GlobalOptions: types.ListNull(types.StringType)}
 	}
-	d := &dhcpOptionsModel{DefaultRoute: prior.DefaultRoute, DefaultRouteDistance: prior.DefaultRouteDistance, NameServer: prior.NameServer}
+	d := *prior
 	if want(d.DefaultRoute) {
 		d.DefaultRoute = getUpdate(tree, "dhcp-options", "default-route")
 	}
@@ -209,14 +270,20 @@ func ifaceFromTree(tree any, s *ifaceSettings, all bool, diags *diag.Diagnostics
 	if want(d.NameServer) {
 		d.NameServer = getUpdate(tree, "dhcp-options", "name-server")
 	}
+	if want(d.ClientOptions) {
+		d.ClientOptions = getList(tree, "dhcp-options", "client-option")
+	}
+	if want(d.GlobalOptions) {
+		d.GlobalOptions = getList(tree, "dhcp-options", "global-option")
+	}
 	s.DHCPOptions = nil
-	if !allNull(d.DefaultRoute, d.DefaultRouteDistance, d.NameServer) {
-		s.DHCPOptions = d
+	if !d.empty() {
+		s.DHCPOptions = &d
 	}
 }
 
 func validateIface(s *ifaceSettings, diags *diag.Diagnostics) {
-	if d := s.DHCPOptions; d != nil && allNull(d.DefaultRoute, d.DefaultRouteDistance, d.NameServer) {
+	if d := s.DHCPOptions; d != nil && d.empty() {
 		diags.AddAttributeError(path.Root("dhcp_options"), "Empty dhcp_options block", "Set at least one attribute, or remove the block.")
 	}
 }
@@ -426,5 +493,116 @@ func newInterfaceVifResource() resourceFactory {
 		ImportAttrs: vifImport,
 		ImportHint:  "<interface>.<vlan>, for example eth0.100",
 		Validate:    func(_ context.Context, m *vifModel, diags *diag.Diagnostics) { validateIface(&m.ifaceSettings, diags) },
+	})
+}
+
+// edgeos_interface_switch
+
+type switchModel struct {
+	ID          types.String `tfsdk:"id"`
+	Name        types.String `tfsdk:"name"`
+	SwitchPorts types.Set    `tfsdk:"switch_ports"`
+	VLANAware   types.Bool   `tfsdk:"vlan_aware"`
+	ifaceSettings
+}
+
+func switchSchema() schema.Schema {
+	attrs := ifaceAttributes("switch", schema.BoolAttribute{
+		MarkdownDescription: "`true` switches the switch interface off (the `disable` node), `false` makes sure it is on. " +
+			"Leave it unset to not manage it.",
+		Optional: true,
+	})
+	attrs["id"] = idAttribute("The switch name.")
+	attrs["name"] = schema.StringAttribute{
+		MarkdownDescription: "Switch name, such as `switch0`. Changing it manages a different switch.",
+		Required:            true,
+		Validators:          []validator.String{switchName()},
+		PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+	}
+	attrs["switch_ports"] = schema.SetAttribute{
+		MarkdownDescription: "Ethernet ports in the switch (`switch-port interface <port>`), such as `[\"eth2\", \"eth3\"]`. " +
+			"The resource owns the whole list: ports that are not in it are taken out of the switch, including their " +
+			"per-port VLAN settings. Settings below a port that stays in the list are kept. The ports have to exist.",
+		Optional:    true,
+		ElementType: types.StringType,
+		Validators: []validator.Set{
+			setvalidator.SizeAtLeast(1),
+			setvalidator.ValueStringsAre(ethernetName()),
+		},
+	}
+	attrs["vlan_aware"] = schema.BoolAttribute{
+		MarkdownDescription: "Make the switch VLAN aware (`switch-port vlan-aware`). `true` writes `enable`, `false` writes `disable`.",
+		Optional:            true,
+	}
+	return schema.Schema{
+		MarkdownDescription: "Settings of a switch interface (`interfaces switch <name>`), such as `switch0` on an EdgeRouter X.\n\n" +
+			"Creating the resource takes the switch over when it exists and creates it otherwise. Only the attributes you " +
+			"set are managed. Anything you leave out (and every option this resource does not model, such as per-port " +
+			"`vlan` settings or `dhcpv6-pd`) is neither read nor changed. Removing an attribute from the configuration " +
+			"removes that setting from the switch. Import reads every modelled setting the switch has.\n\n" +
+			"Destroying the resource removes the settings it manages and keeps the switch itself. Removing `addresses`, " +
+			"`switch_ports` or `firewall_*` from the switch you reach the router through can cut you off.",
+		Attributes: attrs,
+	}
+}
+
+func switchToLeaves(ctx context.Context, m *switchModel, diags *diag.Diagnostics) configtree.Leaves {
+	l := configtree.NewLeaves()
+	putTags(ctx, l, m.SwitchPorts, diags, "switch-port", "interface")
+	putEnable(l, m.VLANAware, "switch-port", "vlan-aware")
+	ifaceToLeaves(ctx, l, &m.ifaceSettings, diags)
+	return l
+}
+
+func switchFromTree(_ context.Context, tree any, m *switchModel, diags *diag.Diagnostics) {
+	// The ID is null only right after an import, which reads everything.
+	all := m.ID.IsNull()
+	if all || !m.SwitchPorts.IsNull() {
+		m.SwitchPorts = getTags(tree, "switch-port", "interface")
+	}
+	if all || !m.VLANAware.IsNull() {
+		m.VLANAware = getEnable(tree, "switch-port", "vlan-aware")
+	}
+	ifaceFromTree(tree, &m.ifaceSettings, all, diags)
+}
+
+func switchOwned(m *switchModel) []configtree.Path {
+	var owned []configtree.Path
+	if known(m.SwitchPorts) {
+		owned = append(owned, configtree.NewPath("switch-port", "interface", "*"))
+	}
+	// disabled = false still owns the disable node, so a disabled switch is
+	// switched on.
+	if known(m.Disabled) && !m.Disabled.ValueBool() {
+		owned = append(owned, configtree.NewPath("disable"))
+	}
+	return owned
+}
+
+func switchImport(id string) (map[string]attr.Value, error) {
+	if !switchRE.MatchString(id) {
+		return nil, fmt.Errorf("%q is not a switch interface name", id)
+	}
+	return map[string]attr.Value{"name": types.StringValue(id)}, nil
+}
+
+func newInterfaceSwitchResource() resourceFactory {
+	return newLeafResource(&leafSpec[switchModel]{
+		Name:   "interface_switch",
+		Schema: switchSchema(),
+		Path: func(m *switchModel) configtree.Path {
+			return configtree.NewPath("interfaces", "switch", m.Name.ValueString())
+		},
+		ID:          func(m *switchModel) string { return m.Name.ValueString() },
+		SetID:       func(m *switchModel, id string) { m.ID = types.StringValue(id) },
+		ToLeaves:    switchToLeaves,
+		FromTree:    switchFromTree,
+		ImportAttrs: switchImport,
+		ImportHint:  "the switch name, for example switch0",
+		Adopt:       true,
+		Owned:       switchOwned,
+		Validate: func(_ context.Context, m *switchModel, diags *diag.Diagnostics) {
+			validateIface(&m.ifaceSettings, diags)
+		},
 	})
 }

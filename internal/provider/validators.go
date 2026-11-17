@@ -95,6 +95,7 @@ func (v ipValidator) ValidateString(_ context.Context, req validator.StringReque
 var (
 	firewallNameRE = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,27}$`)
 	ethernetRE     = regexp.MustCompile(`^eth[0-9]+$`)
+	switchRE       = regexp.MustCompile(`^switch[0-9]+$`)
 	wireguardRE    = regexp.MustCompile(`^wg[0-9]{1,3}$`)
 	macRE          = regexp.MustCompile(`^([0-9a-f]{2}:){5}[0-9a-f]{2}$`)
 	protocolRE     = regexp.MustCompile(`^!?[a-z0-9_]+$`)
@@ -131,4 +132,8 @@ func interfaceName() validator.String {
 
 func tagName() validator.String {
 	return stringvalidator.RegexMatches(tagNameRE, "must only use letters, digits, '-', '_' and '.'")
+}
+
+func switchName() validator.String {
+	return stringvalidator.RegexMatches(switchRE, "must be a switch interface name such as switch0")
 }

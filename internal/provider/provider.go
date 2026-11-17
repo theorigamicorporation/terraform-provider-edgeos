@@ -272,6 +272,7 @@ func (p *edgeosProvider) Resources(_ context.Context) []func() resource.Resource
 		newStaticInterfaceRouteResource(),
 		newInterfaceEthernetResource(),
 		newInterfaceVifResource(),
+		newInterfaceSwitchResource(),
 		newSystemResource(),
 		newLoginUserResource,
 		newLoginUserPublicKeyResource,

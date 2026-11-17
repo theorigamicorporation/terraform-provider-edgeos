@@ -276,6 +276,7 @@ source has its own example under [`examples/`](examples) and a page under
 | [`edgeos_port_forward_settings`](docs/resources/port_forward_settings.md) | WAN/LAN interfaces, hairpin NAT, auto firewall |
 | [`edgeos_interface_ethernet`](docs/resources/interface_ethernet.md) | settings of a physical port |
 | [`edgeos_interface_vif`](docs/resources/interface_vif.md) | a VLAN interface |
+| [`edgeos_interface_switch`](docs/resources/interface_switch.md) | a switch interface such as `switch0` and its ports |
 | [`edgeos_dhcp_shared_network`](docs/resources/dhcp_shared_network.md) | a DHCP server network with its subnets |
 | [`edgeos_dhcp_static_mapping`](docs/resources/dhcp_static_mapping.md) | a DHCP reservation |
 | [`edgeos_dhcp_server_settings`](docs/resources/dhcp_server_settings.md) | global DHCP server options: dnsmasq, hostfile update, static ARP |

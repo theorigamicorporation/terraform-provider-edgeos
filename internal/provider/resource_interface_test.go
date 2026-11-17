@@ -38,6 +38,8 @@ func fullIface() ifaceSettings {
 		FirewallLocal: types.StringValue("WAN_LOCAL"),
 		DHCPOptions: &dhcpOptionsModel{
 			DefaultRoute: types.BoolValue(true), DefaultRouteDistance: types.Int64Value(210), NameServer: types.BoolValue(false),
+			ClientOptions: stringList([]string{"send dhcp-client-identifier 01:02:00:5e:00:53:01;", "send vendor-class-identifier 75:64:68:63:70:20:31:2e:32:35:2e:31;"}),
+			GlobalOptions: stringList([]string{"option rfc3442-classless-static-routes code 121 = array of unsigned integer 8;"}),
 		},
 	}
 }
@@ -54,6 +56,9 @@ var fullIfaceLeaves = map[string]configtree.Value{
 	"dhcp-options default-route":          configtree.Single("update"),
 	"dhcp-options default-route-distance": configtree.Single("210"),
 	"dhcp-options name-server":            configtree.Single("no-update"),
+	"dhcp-options client-option": configtree.Multi("send dhcp-client-identifier 01:02:00:5e:00:53:01;",
+		"send vendor-class-identifier 75:64:68:63:70:20:31:2e:32:35:2e:31;"),
+	"dhcp-options global-option": configtree.Multi("option rfc3442-classless-static-routes code 121 = array of unsigned integer 8;"),
 }
 
 func withLeaves(base map[string]configtree.Value, extra map[string]configtree.Value) map[string]configtree.Value {
@@ -288,6 +293,136 @@ func TestInterfaceImport(t *testing.T) {
 		if ok && vifID(&vifModel{Interface: attrs["interface"].(types.String), VLAN: attrs["vlan"].(types.Int64)}) != id {
 			t.Errorf("vif %q does not round trip: %v", id, attrs)
 		}
+	}
+}
+
+func TestSwitchMapping(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cases := []struct {
+		name   string
+		model  switchModel
+		leaves map[string]configtree.Value
+	}{
+		{
+			name:   "nothing managed",
+			model:  switchModel{Name: types.StringValue("switch0"), SwitchPorts: types.SetNull(types.StringType), VLANAware: types.BoolNull(), ifaceSettings: nullIface()},
+			leaves: map[string]configtree.Value{},
+		},
+		{
+			name:  "everything",
+			model: switchModel{Name: types.StringValue("switch0"), SwitchPorts: stringSet([]string{"eth3", "eth2"}), VLANAware: types.BoolValue(false), ifaceSettings: fullIface()},
+			leaves: withLeaves(fullIfaceLeaves, map[string]configtree.Value{
+				"switch-port interface eth2": configtree.Flag(),
+				"switch-port interface eth3": configtree.Flag(),
+				"switch-port vlan-aware":     configtree.Single("disable"),
+			}),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var diags diag.Diagnostics
+			l := switchToLeaves(ctx, &tc.model, &diags)
+			if diags.HasError() {
+				t.Fatal(diags)
+			}
+			assertLeaves(t, l, tc.leaves)
+
+			// Round trip as an import, which reads everything.
+			back := switchModel{ID: types.StringNull(), SwitchPorts: types.SetNull(types.StringType), VLANAware: types.BoolNull(), ifaceSettings: nullIface()}
+			switchFromTree(ctx, configtree.Build(l), &back, &diags)
+			if diags.HasError() {
+				t.Fatal(diags)
+			}
+			assertLeaves(t, switchToLeaves(ctx, &back, &diags), tc.leaves)
+		})
+	}
+}
+
+func TestSwitchFromTreeReadsOnlyManagedAttributes(t *testing.T) {
+	t.Parallel()
+	var diags diag.Diagnostics
+	tree := map[string]any{
+		"address": []any{"192.168.1.1/24"}, "description": "LAN", "mtu": "1500",
+		"switch-port": map[string]any{
+			"interface":  map[string]any{"eth2": nil, "eth3": map[string]any{"vlan": map[string]any{"pvid": "10"}}},
+			"vlan-aware": "enable",
+		},
+		"dhcp-options": map[string]any{"client-option": []any{"send host-name lan;"}, "global-option": []any{"option x code 77 = text;"}},
+	}
+	m := switchModel{ID: types.StringValue("switch0"), Name: types.StringValue("switch0"),
+		SwitchPorts: stringSet([]string{"eth2"}), VLANAware: types.BoolNull(), ifaceSettings: nullIface()}
+	m.DHCPOptions = &dhcpOptionsModel{DefaultRoute: types.BoolNull(), DefaultRouteDistance: types.Int64Null(), NameServer: types.BoolNull(),
+		ClientOptions: stringList([]string{"old;"}), GlobalOptions: types.ListNull(types.StringType)}
+	switchFromTree(context.Background(), tree, &m, &diags)
+	if diags.HasError() {
+		t.Fatal(diags)
+	}
+	if !m.SwitchPorts.Equal(stringSet([]string{"eth2", "eth3"})) {
+		t.Errorf("switch ports = %v", m.SwitchPorts)
+	}
+	if !m.VLANAware.IsNull() || !m.Addresses.IsNull() || !m.MTU.IsNull() || !m.Description.IsNull() {
+		t.Errorf("unmanaged attributes were read: %+v", m)
+	}
+	if d := m.DHCPOptions; d == nil || !d.ClientOptions.Equal(stringList([]string{"send host-name lan;"})) || !d.GlobalOptions.IsNull() {
+		t.Errorf("dhcp options = %+v", m.DHCPOptions)
+	}
+}
+
+func TestSwitchOwned(t *testing.T) {
+	t.Parallel()
+	m := switchModel{SwitchPorts: types.SetNull(types.StringType), ifaceSettings: nullIface()}
+	if got := switchOwned(&m); len(got) != 0 {
+		t.Errorf("nothing set owns %v", got)
+	}
+	m.SwitchPorts = stringSet([]string{"eth2"})
+	m.Disabled = types.BoolValue(false)
+	got := switchOwned(&m)
+	if len(got) != 2 || got[0].String() != `switch-port interface "*"` || got[1].String() != "disable" {
+		t.Errorf("owned = %v", got)
+	}
+}
+
+func TestSwitchImport(t *testing.T) {
+	t.Parallel()
+	for id, ok := range map[string]bool{"switch0": true, "switch12": true, "switch": false, "eth0": false, "switch0.10": false, "": false} {
+		attrs, err := switchImport(id)
+		if (err == nil) != ok {
+			t.Errorf("switch %q: err = %v", id, err)
+		}
+		if ok && attrs["name"].(types.String).ValueString() != id {
+			t.Errorf("switch %q: attrs = %v", id, attrs)
+		}
+	}
+}
+
+func TestDHCPClientOptionValidator(t *testing.T) {
+	t.Parallel()
+	for s, want := range map[string]string{
+		"send dhcp-client-identifier 01:a2:03:8e:03:ce:ff;":                 "",
+		"send vendor-class-identifier 75:64:68:63:70:20:31:2e:32:35:2e:31;": "",
+		`send vendor-class-identifier "udhcp 1.25.1";`:                      "Double quotes",
+		"   ":                     "Empty DHCP option",
+		"send host-name x;\nfoo;": "Invalid EdgeOS value",
+	} {
+		resp := &validator.StringResponse{}
+		dhcpClientOption().ValidateString(context.Background(), validator.StringRequest{ConfigValue: types.StringValue(s)}, resp)
+		got := ""
+		if resp.Diagnostics.HasError() {
+			got = resp.Diagnostics.Errors()[0].Summary()
+			if want == "Double quotes" && !strings.Contains(resp.Diagnostics.Errors()[0].Detail(), "75:64:68:63:70:20:31:2e:32:35:2e:31") {
+				t.Errorf("%q: the error should show the hex form: %s", s, resp.Diagnostics.Errors()[0].Detail())
+			}
+		}
+		if (want == "") != (got == "") || !strings.Contains(got, want) {
+			t.Errorf("%q: got %q, want %q", s, got, want)
+		}
+	}
+	resp := &validator.StringResponse{}
+	dhcpClientOption().ValidateString(context.Background(), validator.StringRequest{ConfigValue: types.StringUnknown()}, resp)
+	if resp.Diagnostics.HasError() || dhcpClientOption().MarkdownDescription(context.Background()) == "" {
+		t.Error("unknown values must pass and the validator needs a description")
 	}
 }
 
@@ -613,6 +748,24 @@ func TestAccInterfaceValidation(t *testing.T) {
 		{"vif", `interface = "eth0"
   vlan = 10
   dhcp_options = {}`, `Empty dhcp_options block`},
+		{"vif", `interface = "eth0"
+  vlan = 10
+  dhcp_options = { client_options = ["send vendor-class-identifier \"udhcp 1.25.1\";"] }`, `Double quotes in a DHCP option.*hex`},
+		{"ethernet", `name = "eth0"
+  dhcp_options = { global_options = [] }`, `at least 1`},
+		{"ethernet", `name = "eth0"
+  dhcp_options = { client_options = ["a;", "a;"] }`, `Duplicate List Value`},
+		{"switch", `name = "eth0"`, `switch interface name`},
+		{"switch", `name = "switch0"
+  switch_ports = ["switch1"]`, `ethernet interface name`},
+		{"switch", `name = "switch0"
+  switch_ports = []`, `at least 1`},
+		{"switch", `name = "switch0"
+  mtu = 50`, `between 68 and 9000`},
+		{"switch", `name = "switch0"
+  dhcp_options = {}`, `Empty dhcp_options block`},
+		{"switch", `name = "switch0"
+  dhcp_options = { global_options = ["option x = \"y\";"] }`, `Double quotes in a DHCP option`},
 	}
 	for _, tc := range cases {
 		resource.Test(t, resource.TestCase{
@@ -818,5 +971,398 @@ resource "edgeos_interface_vif" "x" {
 	})
 	if got, _ := e.srv.Get(cliPath("interfaces ethernet eth2 vif 10")); got == nil {
 		t.Fatal("the hand made vif is gone")
+	}
+}
+
+// Real lines from a router whose ISP wants a client identifier and the
+// vendor class of the ISP's own box, the latter as hex for "udhcp 1.25.1".
+const (
+	optClientID = "send dhcp-client-identifier 01:a2:03:8e:03:ce:ff;"
+	optVendor   = "send vendor-class-identifier 75:64:68:63:70:20:31:2e:32:35:2e:31;"
+	optRFC3442  = "option rfc3442-classless-static-routes code 121 = array of unsigned integer 8;"
+)
+
+func TestAccInterfaceDHCPOptions(t *testing.T) {
+	e := newAccEnv(t)
+	vif := `
+resource "edgeos_interface_vif" "wan" {
+  interface = "eth1"
+  vlan      = 100
+  addresses = ["dhcp"]
+  dhcp_options = {
+    client_options = ["` + optClientID + `", "` + optVendor + `"]
+    global_options = ["` + optRFC3442 + `"]
+  }
+}
+`
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy: resource.ComposeAggregateTestCheckFunc(
+			e.destroyed("interfaces ethernet eth1 vif 100", "interfaces ethernet eth0 dhcp-options client-option"),
+			// The global option nobody manages on eth0 is still there.
+			e.checkValue("interfaces ethernet eth0 dhcp-options global-option", []string{"option hand-made code 224 = text;"}),
+		),
+		Steps: []resource.TestStep{
+			{
+				// eth0 manages only the client options; the global option set
+				// by hand is left alone.
+				PreConfig: e.set("interfaces ethernet eth0 dhcp-options global-option", configtree.Multi("option hand-made code 224 = text;")),
+				Config: e.config(vif + `
+resource "edgeos_interface_ethernet" "wan" {
+  name      = "eth0"
+  addresses = ["dhcp"]
+  dhcp_options = {
+    client_options = ["` + optClientID + `", "` + optVendor + `"]
+  }
+}`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("edgeos_interface_ethernet.wan", "dhcp_options.client_options.#", "2"),
+					resource.TestCheckResourceAttr("edgeos_interface_ethernet.wan", "dhcp_options.client_options.1", optVendor),
+					resource.TestCheckNoResourceAttr("edgeos_interface_ethernet.wan", "dhcp_options.global_options"),
+					e.checkValue("interfaces ethernet eth0 dhcp-options", map[string]any{
+						"client-option": []string{optClientID, optVendor},
+						"global-option": []string{"option hand-made code 224 = text;"},
+					}),
+					e.checkValue("interfaces ethernet eth1 vif 100", map[string]any{
+						"address": []string{"dhcp"},
+						"dhcp-options": map[string]any{
+							"client-option": []string{optClientID, optVendor},
+							"global-option": []string{optRFC3442},
+						},
+					}),
+				),
+			},
+			{
+				ResourceName:      "edgeos_interface_vif.wan",
+				ImportState:       true,
+				ImportStateId:     "eth1.100",
+				ImportStateVerify: true,
+			},
+			{
+				ResourceName:    "edgeos_interface_vif.wan",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
+				ImportStateId:   "eth1.100",
+			},
+			{
+				// The order of the lines matters, and eth0 now takes over the
+				// global options too.
+				Config: e.config(vif + `
+resource "edgeos_interface_ethernet" "wan" {
+  name      = "eth0"
+  addresses = ["dhcp"]
+  dhcp_options = {
+    client_options = ["` + optVendor + `", "` + optClientID + `"]
+    global_options = ["` + optRFC3442 + `"]
+  }
+}`),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("edgeos_interface_ethernet.wan", plancheck.ResourceActionUpdate),
+					plancheck.ExpectResourceAction("edgeos_interface_vif.wan", plancheck.ResourceActionNoop),
+				}},
+				Check: e.checkValue("interfaces ethernet eth0 dhcp-options", map[string]any{
+					"client-option": []string{optVendor, optClientID},
+					"global-option": []string{optRFC3442},
+				}),
+			},
+			{
+				// Drift: lines changed by hand are put back.
+				PreConfig: func() {
+					e.del("interfaces ethernet eth0 dhcp-options client-option")()
+					e.set("interfaces ethernet eth0 dhcp-options client-option", configtree.Multi(optClientID))()
+					e.del("interfaces ethernet eth1 vif 100 dhcp-options global-option")()
+				},
+				Config: e.config(vif + `
+resource "edgeos_interface_ethernet" "wan" {
+  name      = "eth0"
+  addresses = ["dhcp"]
+  dhcp_options = {
+    client_options = ["` + optVendor + `", "` + optClientID + `"]
+    global_options = ["` + optRFC3442 + `"]
+  }
+}`),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("edgeos_interface_ethernet.wan", plancheck.ResourceActionUpdate),
+					plancheck.ExpectResourceAction("edgeos_interface_vif.wan", plancheck.ResourceActionUpdate),
+				}},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					e.checkValue("interfaces ethernet eth0 dhcp-options client-option", []string{optVendor, optClientID}),
+					e.checkValue("interfaces ethernet eth1 vif 100 dhcp-options global-option", []string{optRFC3442}),
+				),
+			},
+			{
+				// Removing the lists from the config removes the lines.
+				Config: e.config(`
+resource "edgeos_interface_vif" "wan" {
+  interface = "eth1"
+  vlan      = 100
+  addresses = ["dhcp"]
+}
+
+resource "edgeos_interface_ethernet" "wan" {
+  name      = "eth0"
+  addresses = ["dhcp"]
+  dhcp_options = {
+    client_options = ["` + optClientID + `"]
+  }
+}`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					e.checkAbsent("interfaces ethernet eth1 vif 100 dhcp-options"),
+					e.checkAbsent("interfaces ethernet eth0 dhcp-options global-option"),
+					e.checkValue("interfaces ethernet eth0 dhcp-options client-option", []string{optClientID}),
+				),
+			},
+			{
+				// Put the hand-made global option back for CheckDestroy.
+				PreConfig: e.set("interfaces ethernet eth0 dhcp-options global-option", configtree.Multi("option hand-made code 224 = text;")),
+				Config: e.config(`
+resource "edgeos_interface_ethernet" "wan" {
+  name      = "eth0"
+  addresses = ["dhcp"]
+  dhcp_options = {
+    client_options = ["` + optClientID + `"]
+  }
+}`),
+				Check: e.checkValue("interfaces ethernet eth0 dhcp-options global-option", []string{"option hand-made code 224 = text;"}),
+			},
+		},
+	})
+}
+
+const switchFirewalls = `
+resource "edgeos_firewall_name" "lan_in" {
+  name = "LAN_IN"
+}
+resource "edgeos_firewall_name" "lan_local" {
+  name = "LAN_LOCAL"
+}
+`
+
+func TestAccInterfaceSwitch(t *testing.T) {
+	e := newAccEnv(t)
+	updated := switchFirewalls + `
+resource "edgeos_interface_switch" "lan" {
+  name           = "switch0"
+  description    = "LAN switch"
+  addresses      = ["dhcp"]
+  switch_ports   = ["eth3", "eth4"]
+  vlan_aware     = false
+  mtu            = 1500
+  mac            = "02:00:5e:00:53:20"
+  disabled       = true
+  firewall_local = edgeos_firewall_name.lan_local.name
+  dhcp_options = {
+    name_server    = false
+    client_options = ["` + optClientID + `"]
+  }
+}`
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy: resource.ComposeAggregateTestCheckFunc(
+			// The switch survives with the option nobody manages.
+			e.checkValue("interfaces switch switch0", map[string]any{"ip": map[string]any{"enable-proxy-arp": nil}}),
+		),
+		Steps: []resource.TestStep{
+			{
+				// Take over an existing switch0, the way an EdgeRouter X ships.
+				PreConfig: func() {
+					e.set("interfaces switch switch0 switch-port interface eth2", configtree.Flag())()
+					e.set("interfaces switch switch0 switch-port interface eth3 vlan pvid", configtree.Single("10"))()
+					e.set("interfaces switch switch0 ip enable-proxy-arp", configtree.Flag())()
+				},
+				Config: e.config(switchFirewalls + `
+resource "edgeos_interface_switch" "lan" {
+  name         = "switch0"
+  description  = "LAN switch"
+  addresses    = ["192.168.2.1/24"]
+  switch_ports = ["eth2", "eth3"]
+  vlan_aware   = true
+  firewall_in  = edgeos_firewall_name.lan_in.name
+}`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("edgeos_interface_switch.lan", "id", "switch0"),
+					resource.TestCheckNoResourceAttr("edgeos_interface_switch.lan", "disabled"),
+					resource.TestCheckNoResourceAttr("edgeos_interface_switch.lan", "mtu"),
+					e.checkValue("interfaces switch switch0", map[string]any{
+						"address": []string{"192.168.2.1/24"}, "description": "LAN switch",
+						"firewall": map[string]any{"in": map[string]any{"name": "LAN_IN"}},
+						"ip":       map[string]any{"enable-proxy-arp": nil},
+						"switch-port": map[string]any{
+							"interface":  map[string]any{"eth2": nil, "eth3": map[string]any{"vlan": map[string]any{"pvid": "10"}}},
+							"vlan-aware": "enable",
+						},
+					}),
+				),
+			},
+			{
+				// Update in place: eth2 leaves the switch, eth3 keeps its VLAN
+				// settings, DHCP with a client identifier.
+				Config: e.config(updated),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("edgeos_interface_switch.lan", plancheck.ResourceActionUpdate),
+				}},
+				Check: e.checkValue("interfaces switch switch0", map[string]any{
+					"address": []string{"dhcp"}, "description": "LAN switch", "mtu": "1500",
+					"mac": "02:00:5e:00:53:20", "disable": nil,
+					"firewall":     map[string]any{"local": map[string]any{"name": "LAN_LOCAL"}},
+					"dhcp-options": map[string]any{"name-server": "no-update", "client-option": []string{optClientID}},
+					"ip":           map[string]any{"enable-proxy-arp": nil},
+					"switch-port": map[string]any{
+						"interface":  map[string]any{"eth3": map[string]any{"vlan": map[string]any{"pvid": "10"}}, "eth4": nil},
+						"vlan-aware": "disable",
+					},
+				}),
+			},
+			{
+				ResourceName:      "edgeos_interface_switch.lan",
+				ImportState:       true,
+				ImportStateId:     "switch0",
+				ImportStateVerify: true,
+			},
+			{
+				ResourceName:    "edgeos_interface_switch.lan",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
+				ImportStateId:   "switch0",
+			},
+			{
+				// Drift: a port is added and one removed by hand, and the
+				// description is edited.
+				PreConfig: func() {
+					e.set("interfaces switch switch0 switch-port interface eth2", configtree.Flag())()
+					e.del("interfaces switch switch0 switch-port interface eth4")()
+					e.set("interfaces switch switch0 description", configtree.Single("hand edit"))()
+				},
+				Config: e.config(updated),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("edgeos_interface_switch.lan", plancheck.ResourceActionUpdate),
+				}},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					e.checkValue("interfaces switch switch0 description", "LAN switch"),
+					e.checkValue("interfaces switch switch0 switch-port interface", map[string]any{
+						"eth3": map[string]any{"vlan": map[string]any{"pvid": "10"}}, "eth4": nil,
+					}),
+				),
+			},
+			{
+				// disabled = false switches it on; removed settings go away and
+				// unmanaged ones stay.
+				Config: e.config(switchFirewalls + `
+resource "edgeos_interface_switch" "lan" {
+  name         = "switch0"
+  addresses    = ["192.168.2.1/24"]
+  switch_ports = ["eth3"]
+  disabled     = false
+}`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					e.checkValue("interfaces switch switch0", map[string]any{
+						"address": []string{"192.168.2.1/24"},
+						"ip":      map[string]any{"enable-proxy-arp": nil},
+						"switch-port": map[string]any{
+							"interface": map[string]any{"eth3": map[string]any{"vlan": map[string]any{"pvid": "10"}}},
+						},
+					}),
+					resource.TestCheckResourceAttr("edgeos_interface_switch.lan", "disabled", "false"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccInterfaceSwitchCreate(t *testing.T) {
+	e := newAccEnv(t)
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		// Destroy keeps the switch and only removes what it managed.
+		CheckDestroy: e.checkAbsent("interfaces switch switch2 switch-port"),
+		Steps: []resource.TestStep{
+			{
+				// A switch that does not exist yet is created.
+				Config: e.config(`
+resource "edgeos_interface_switch" "x" {
+  name         = "switch1"
+  switch_ports = ["eth2"]
+}`),
+				Check: e.checkValue("interfaces switch switch1", map[string]any{
+					"switch-port": map[string]any{"interface": map[string]any{"eth2": nil}},
+				}),
+			},
+			{
+				// Renaming manages another switch; the first one loses its ports.
+				Config: e.config(`
+resource "edgeos_interface_switch" "x" {
+  name         = "switch2"
+  switch_ports = ["eth2"]
+}`),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("edgeos_interface_switch.x", plancheck.ResourceActionDestroyBeforeCreate),
+				}},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					e.checkAbsent("interfaces switch switch1 switch-port"),
+					e.checkValue("interfaces switch switch2 switch-port interface eth2", nil),
+				),
+			},
+			{
+				// Drift: the whole switch is deleted by hand and comes back.
+				PreConfig: e.del("interfaces switch switch2"),
+				Config: e.config(`
+resource "edgeos_interface_switch" "x" {
+  name         = "switch2"
+  switch_ports = ["eth2"]
+}`),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("edgeos_interface_switch.x", plancheck.ResourceActionCreate),
+				}},
+				Check: e.checkValue("interfaces switch switch2 switch-port interface eth2", nil),
+			},
+		},
+	})
+}
+
+func TestAccInterfaceSwitchErrors(t *testing.T) {
+	e := newAccEnv(t)
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				// A port the router does not have.
+				Config: e.config(`
+resource "edgeos_interface_switch" "x" {
+  name         = "switch0"
+  switch_ports = ["eth9"]
+}`),
+				ExpectError: regexp.MustCompile(`Interface eth9 does not exist`),
+			},
+			{
+				// A port that is already in another switch.
+				PreConfig: e.set("interfaces switch switch1 switch-port interface eth2", configtree.Flag()),
+				Config: e.config(`
+resource "edgeos_interface_switch" "x" {
+  name         = "switch0"
+  switch_ports = ["eth2"]
+}`),
+				ExpectError: regexp.MustCompile(`Interface eth2 is already a port of`),
+			},
+			{
+				PreConfig: func() { e.srv.FailNextCommit("switch0: hardware error") },
+				Config: e.config(`
+resource "edgeos_interface_switch" "x" {
+  name        = "switch0"
+  description = "never"
+}`),
+				ExpectError: regexp.MustCompile(`(?s)EdgeOS rejected the change.*switch0: hardware error`),
+			},
+			{
+				Config: e.config(`
+resource "edgeos_interface_switch" "x" {
+  name        = "switch0"
+  firewall_in = "MISSING"
+}`),
+				ExpectError: regexp.MustCompile(`Firewall name \[MISSING\] does not exist`),
+			},
+		},
+	})
+	if _, ok := e.srv.Get(cliPath("interfaces switch switch0")); ok {
+		t.Fatal("switch0 was created by a failed commit")
 	}
 }

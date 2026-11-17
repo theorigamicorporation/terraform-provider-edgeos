@@ -36,3 +36,11 @@ First release.
 - `edgeos_service_upnp` for `service upnp2`, including ACL rules.
 - `edgeos_dhcp_server_settings` for the global `service dhcp-server` options
   and `global-parameters`.
+- `edgeos_interface_switch` for `interfaces switch <name>` (such as `switch0`
+  on an EdgeRouter X): addresses, switch ports, `vlan-aware`, firewalls and
+  DHCP client options. Import by the switch name.
+- `dhcp_options.client_options` and `dhcp_options.global_options` on the
+  ethernet, VLAN and switch interfaces (`dhcp-options client-option` and
+  `global-option`). Values with double quotes are rejected at plan time with
+  a hint to write strings as hex.
+- `import` block examples (`import-by-string-id.tf`) on every resource page.
