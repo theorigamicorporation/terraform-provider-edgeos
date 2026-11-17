@@ -110,10 +110,18 @@ func DefaultTree() map[string]any {
 		eth[fmt.Sprintf("eth%d", i)] = port
 	}
 	return map[string]any{
+		// The global firewall options of a factory config.boot.
 		"firewall": map[string]any{
-			"all-ping":       "enable",
-			"broadcast-ping": "disable",
-			"syn-cookies":    "enable",
+			"all-ping":               "enable",
+			"broadcast-ping":         "disable",
+			"ipv6-receive-redirects": "disable",
+			"ipv6-src-route":         "disable",
+			"ip-src-route":           "disable",
+			"log-martians":           "enable",
+			"receive-redirects":      "disable",
+			"send-redirects":         "enable",
+			"source-validation":      "disable",
+			"syn-cookies":            "enable",
 		},
 		"interfaces": map[string]any{
 			"ethernet": eth,

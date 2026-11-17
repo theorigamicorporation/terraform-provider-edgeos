@@ -176,7 +176,7 @@ func newDHCPSharedNetworkResource() resourceFactory {
 				"(`static-route`, `failover`, ...) are left alone unless the subnet is removed.\n\n" +
 				"Destroying the resource deletes the whole shared network, including every subnet and static mapping in it, " +
 				"managed by Terraform or not. Global DHCP server settings (`service dhcp-server disabled`, " +
-				"`use-dnsmasq`, `hostfile-update`) are not part of this resource; use `edgeos_config` for those.",
+				"`use-dnsmasq`, `hostfile-update`) are not part of this resource; use `edgeos_dhcp_server_settings` for those.",
 			Attributes: map[string]schema.Attribute{
 				"id": idAttribute("The shared network name."),
 				"name": schema.StringAttribute{

@@ -30,3 +30,9 @@ First release.
   apart from the user so they can be rotated on their own.
 - `edgeos_service_ssh` and `edgeos_service_gui` for the SSH server and the web
   UI. Destroy restores the defaults and never switches SSH off.
+- `edgeos_firewall_settings` for the global firewall options (`all-ping`,
+  redirects, `source-validation`, `syn-cookies`, ...). Destroy writes the
+  EdgeOS defaults back.
+- `edgeos_service_upnp` for `service upnp2`, including ACL rules.
+- `edgeos_dhcp_server_settings` for the global `service dhcp-server` options
+  and `global-parameters`.

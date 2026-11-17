@@ -5,7 +5,7 @@ subcategory: ""
 description: |-
   A DHCP server shared network and its subnets (service dhcp-server shared-network-name <name>).
   Static mappings are managed with edgeos_dhcp_static_mapping and are never touched when this resource changes a subnet that stays in the config. Removing a subnet from subnets deletes that whole subnet on the router, including static mappings inside it. Options of a subnet that are not modelled here (static-route, failover, ...) are left alone unless the subnet is removed.
-  Destroying the resource deletes the whole shared network, including every subnet and static mapping in it, managed by Terraform or not. Global DHCP server settings (service dhcp-server disabled, use-dnsmasq, hostfile-update) are not part of this resource; use edgeos_config for those.
+  Destroying the resource deletes the whole shared network, including every subnet and static mapping in it, managed by Terraform or not. Global DHCP server settings (service dhcp-server disabled, use-dnsmasq, hostfile-update) are not part of this resource; use edgeos_dhcp_server_settings for those.
 ---
 
 # edgeos_dhcp_shared_network (Resource)
@@ -14,7 +14,7 @@ A DHCP server shared network and its subnets (`service dhcp-server shared-networ
 
 Static mappings are managed with `edgeos_dhcp_static_mapping` and are never touched when this resource changes a subnet that stays in the config. Removing a subnet from `subnets` deletes that whole subnet on the router, including static mappings inside it. Options of a subnet that are not modelled here (`static-route`, `failover`, ...) are left alone unless the subnet is removed.
 
-Destroying the resource deletes the whole shared network, including every subnet and static mapping in it, managed by Terraform or not. Global DHCP server settings (`service dhcp-server disabled`, `use-dnsmasq`, `hostfile-update`) are not part of this resource; use `edgeos_config` for those.
+Destroying the resource deletes the whole shared network, including every subnet and static mapping in it, managed by Terraform or not. Global DHCP server settings (`service dhcp-server disabled`, `use-dnsmasq`, `hostfile-update`) are not part of this resource; use `edgeos_dhcp_server_settings` for those.
 
 ## Example Usage
 
