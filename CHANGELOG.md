@@ -16,5 +16,8 @@ First release.
 - Web UI API transport with session renewal, atomic commits per change and
   serialised writes.
 - Resources: `edgeos_config`, `edgeos_firewall_name`, `edgeos_firewall_rule`.
+- NAT and routing resources: `edgeos_nat_rule`, `edgeos_port_forward`,
+  `edgeos_port_forward_settings`, `edgeos_static_route`,
+  `edgeos_static_interface_route`.
 - Data sources: `edgeos_config`, `edgeos_system_info`.
 - Fake EdgeOS API server for tests and for trying the examples locally.
