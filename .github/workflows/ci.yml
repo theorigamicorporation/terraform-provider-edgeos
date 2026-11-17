@@ -96,6 +96,9 @@ jobs:
   coverage:
     name: Coverage
     needs: unit
+    permissions:
+      # Only to publish the coverage badge to the "badges" branch on main.
+      contents: write
     runs-on: ${{ github.event.repository.private && 'o4-k8s-runner-set-o4' || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
@@ -116,6 +119,27 @@ jobs:
             go tool cover -func=coverage.out | tail -n 1
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish coverage badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !github.event.repository.private
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pct="$(go tool cover -func=coverage.out | awk '/^total:/ {sub("%", "", $3); print $3}')"
+          color="$(awk -v p="$pct" 'BEGIN { if (p >= 90) print "brightgreen"; else if (p >= 80) print "green"; else if (p >= 70) print "yellow"; else print "red" }')"
+          remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          dir="$(mktemp -d)"
+          if git ls-remote --exit-code "$remote" badges >/dev/null 2>&1; then
+            git clone -q --depth 1 --branch badges "$remote" "$dir"
+          else
+            git -C "$dir" init -q -b badges
+          fi
+          printf '{"schemaVersion":1,"label":"coverage","message":"%s%%","color":"%s"}\n' "$pct" "$color" > "$dir/coverage.json"
+          cd "$dir"
+          git add coverage.json
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Coverage ${pct}%"
+          git push -q "$remote" HEAD:badges
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
