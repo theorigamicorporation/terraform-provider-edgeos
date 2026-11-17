@@ -265,6 +265,8 @@ func (p *edgeosProvider) Resources(_ context.Context) []func() resource.Resource
 		newNATRuleResource(),
 		newPortForwardResource(),
 		newPortForwardSettingsResource(),
+		newStaticRouteResource(),
+		newStaticInterfaceRouteResource(),
 	}
 }
 
