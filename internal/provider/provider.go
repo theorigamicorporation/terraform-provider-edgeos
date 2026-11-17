@@ -263,6 +263,8 @@ func (p *edgeosProvider) Resources(_ context.Context) []func() resource.Resource
 		newFirewallNameResource(),
 		newFirewallRuleResource(),
 		newNATRuleResource(),
+		newPortForwardResource(),
+		newPortForwardSettingsResource(),
 	}
 }
 
