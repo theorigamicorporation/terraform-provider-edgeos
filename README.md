@@ -1,39 +1,29 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="" width="112" height="112">
+<a href="https://theorigamicorporation.com">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/toc-lockup-on-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/toc-lockup-on-light.svg">
+    <img src="assets/toc-lockup-on-light.svg" alt="The Origami Corporation" width="320">
+  </picture>
+</a>
 
 # EdgeOS provider for Terraform and OpenTofu
 
-**Manage Ubiquiti EdgeRouter configuration as code, with plans you can review and commits that either apply fully or not at all.**
+Manage Ubiquiti EdgeRouter configuration as code, with plans you can review and commits that apply fully or not at all.
 
 <p>
 <a href="https://github.com/theorigamicorporation/terraform-provider-edgeos/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/theorigamicorporation/terraform-provider-edgeos/ci.yml?style=flat-square&branch=main&label=CI"></a>
-<a href="https://github.com/theorigamicorporation/terraform-provider-edgeos/actions/workflows/release.yml"><img alt="Release workflow" src="https://img.shields.io/github/actions/workflow/status/theorigamicorporation/terraform-provider-edgeos/release.yml?style=flat-square&label=release"></a>
+<a href="https://github.com/theorigamicorporation/terraform-provider-edgeos/actions/workflows/ci.yml"><img alt="Coverage" src="https://img.shields.io/endpoint?style=flat-square&url=https%3A%2F%2Fraw.githubusercontent.com%2Ftheorigamicorporation%2Fterraform-provider-edgeos%2Fbadges%2Fcoverage.json"></a>
 <a href="https://github.com/theorigamicorporation/terraform-provider-edgeos/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://img.shields.io/github/actions/workflow/status/theorigamicorporation/terraform-provider-edgeos/codeql.yml?style=flat-square&branch=main&label=CodeQL"></a>
 <a href="https://scorecard.dev/viewer/?uri=github.com/theorigamicorporation/terraform-provider-edgeos"><img alt="OpenSSF Scorecard" src="https://img.shields.io/ossf-scorecard/github.com/theorigamicorporation/terraform-provider-edgeos?style=flat-square&label=OpenSSF%20Scorecard"></a>
-</p>
-<p>
 <a href="https://goreportcard.com/report/github.com/theorigamicorporation/terraform-provider-edgeos"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/theorigamicorporation/terraform-provider-edgeos?style=flat-square"></a>
-<a href="https://github.com/theorigamicorporation/terraform-provider-edgeos/actions/workflows/ci.yml"><img alt="Coverage" src="https://img.shields.io/endpoint?style=flat-square&url=https%3A%2F%2Fraw.githubusercontent.com%2Ftheorigamicorporation%2Fterraform-provider-edgeos%2Fbadges%2Fcoverage.json"></a>
-<a href=".golangci.yml"><img alt="golangci-lint" src="https://img.shields.io/badge/linted%20with-golangci--lint-00ADD8?style=flat-square&logo=go&logoColor=white"></a>
 </p>
 <p>
 <a href="https://github.com/theorigamicorporation/terraform-provider-edgeos/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/theorigamicorporation/terraform-provider-edgeos?style=flat-square&sort=semver"></a>
-<a href="https://github.com/theorigamicorporation/terraform-provider-edgeos/releases/latest"><img alt="Release date" src="https://img.shields.io/github/release-date/theorigamicorporation/terraform-provider-edgeos?style=flat-square"></a>
-<a href="https://github.com/theorigamicorporation/terraform-provider-edgeos/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/theorigamicorporation/terraform-provider-edgeos/total?style=flat-square"></a>
-</p>
-<p>
 <a href="https://registry.terraform.io/providers/theorigamicorporation/edgeos/latest"><img alt="Terraform Registry" src="https://img.shields.io/badge/Terraform-Registry-7B42BC?style=flat-square&logo=terraform&logoColor=white"></a>
 <a href="https://search.opentofu.org/provider/theorigamicorporation/edgeos/latest"><img alt="OpenTofu Registry" src="https://img.shields.io/badge/OpenTofu-Registry-FFDA18?style=flat-square&logo=opentofu&logoColor=black"></a>
-</p>
-<p>
 <a href="LICENSE"><img alt="License MPL-2.0" src="https://img.shields.io/github/license/theorigamicorporation/terraform-provider-edgeos?style=flat-square"></a>
-<a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/theorigamicorporation/terraform-provider-edgeos?style=flat-square&logo=go&logoColor=white"></a>
-<a href=".github/workflows/ci.yml"><img alt="Terraform >= 1.13" src="https://img.shields.io/badge/Terraform-%3E%3D%201.13-7B42BC?style=flat-square"></a>
-<a href=".github/workflows/ci.yml"><img alt="OpenTofu >= 1.11" src="https://img.shields.io/badge/OpenTofu-%3E%3D%201.11-FFDA18?style=flat-square"></a>
-<a href="https://github.com/theorigamicorporation/terraform-provider-edgeos/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/theorigamicorporation/terraform-provider-edgeos?style=flat-square"></a>
-<a href="https://github.com/theorigamicorporation/terraform-provider-edgeos/issues"><img alt="Open issues" src="https://img.shields.io/github/issues/theorigamicorporation/terraform-provider-edgeos?style=flat-square"></a>
-<a href="CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square"></a>
 </p>
 
 </div>
@@ -52,24 +42,25 @@
 - [EdgeOS quirks worth knowing](#edgeos-quirks-worth-knowing)
 - [FAQ](#faq)
 - [Development](#development)
+- [Support](#support)
 - [Contributing and security](#contributing-and-security)
 
 ## Features
 
-- **Atomic commits.** Each resource change is one EdgeOS batch: deletes and sets
-  are applied and committed together, and a rejected commit leaves the router
-  untouched. The error shows the config path EdgeOS complained about.
-- **Same API as the web UI.** No SSH scraping and no custom agent on the router.
-- **Drift detection.** Edits made in the web UI or CLI show up in the next plan
-  and are reverted on apply.
-- **Careful ownership.** A resource only touches the attributes it manages;
-  rules below a rule set or VLANs on a port are left alone.
-- **Escape hatch.** `edgeos_config` manages any node as a value, a list or a
-  JSON subtree, and the `edgeos_config` data source reads anything.
-- **Plan-time checks.** Invalid combinations (ports without tcp/udp, NAT rules
-  without interfaces, values EdgeOS refuses) fail at plan, before anything is
-  sent.
-- **One binary for Terraform and OpenTofu**, tested in CI against several
+- Each resource change is one EdgeOS commit. Deletes and sets are applied
+  together, a rejected commit leaves the router untouched, and the error shows
+  the config path EdgeOS complained about.
+- It uses the JSON API of the EdgeOS web UI, so there is no SSH scraping and
+  no agent on the router.
+- Edits made in the web UI or the CLI show up as drift in the next plan and are
+  reverted on apply.
+- A resource only touches the attributes it manages. Rules below a rule set or
+  VLANs on a port are left alone.
+- `edgeos_config` manages any other node as a value, a list or a JSON subtree,
+  and the `edgeos_config` data source reads anything.
+- Invalid combinations (ports without tcp/udp, NAT rules without interfaces,
+  values EdgeOS refuses) fail at plan, before anything is sent.
+- One binary serves Terraform and OpenTofu, and CI tests it against several
   versions of each.
 
 ## Install
@@ -408,27 +399,27 @@ UniFi gateways (USG, UDM, UXG) run different software and are not supported.
 
 ## EdgeOS quirks worth knowing
 
-- **Double quotes are not allowed in any value.** EdgeOS rejects them with
+- Double quotes are not allowed in any value. EdgeOS rejects them with
   "Cannot use the double quote character in a value string". The provider
   catches this at plan time.
-- **Passwords need a symbol.** EdgeOS 3.x refuses a `plaintext-password` made
+- Passwords need a symbol. EdgeOS 3.x refuses a `plaintext-password` made
   only of letters and digits.
-- **Passwords cannot be read back.** After a commit EdgeOS stores a hash in
+- Passwords cannot be read back. After a commit EdgeOS stores a hash in
   `encrypted-password` and keeps `plaintext-password ""` next to it.
   `edgeos_system_login_user` treats the password as write-only; do not manage
   passwords through an `edgeos_config` tree.
-- **Multi-valued nodes are lists.** Nodes such as `address`, `name-server` or
+- Multi-valued nodes are lists. Nodes such as `address`, `name-server` or
   `dns-server` come back as lists even with one value. In an `edgeos_config`
   tree write them as lists, or every plan shows a change.
-- **Script commits break firewall changes on 3.0.1.** Commits run through
+- Script commits break firewall changes on 3.0.1. Commits run through
   `/opt/vyatta/etc/functions/script-template` fail for firewall rule sets with
   `iptables-restore: line 2 failed`, while the same commands in an interactive
   session succeed. The web API is not affected; the planned SSH transport will
   use an interactive session for this reason.
-- **Offload knobs depend on the hardware.** `hwnat` only works on the MediaTek
+- Offload knobs depend on the hardware. `hwnat` only works on the MediaTek
   models (ER-X family), the `ipv4`/`ipv6` knobs only on the Cavium models, but
   EdgeOS accepts all of them everywhere. Some offload changes need a reboot.
-- **Non-admin users see less.** The API hides secrets such as WireGuard keys
+- Non-admin users see less. The API hides secrets such as WireGuard keys
   from operator level users, and they cannot commit. Use an admin user.
 
 ## FAQ
@@ -513,6 +504,13 @@ To try the examples without a router, start `just fake-server` in one terminal,
 export the variables it prints, run `just install`, set up `dev_overrides` as
 shown, and run `terraform plan` or `tofu plan` in an example directory.
 
+## Support
+
+Report bugs and ask for resources in the
+[issue tracker](https://github.com/theorigamicorporation/terraform-provider-edgeos/issues),
+with your router model and `show version` output. For anything else, write to
+office@theorigamicorporation.com.
+
 ## Contributing and security
 
 Bug reports, model and firmware reports and pull requests are welcome; see
@@ -525,3 +523,8 @@ described in [SECURITY.md](SECURITY.md). This project follows the
 
 [Mozilla Public License 2.0](LICENSE). EdgeRouter, EdgeOS and UniFi are
 trademarks of Ubiquiti Inc.; this project is not affiliated with Ubiquiti.
+
+<div align="center">
+<br>
+<a href="https://theorigamicorporation.com">The Origami Corporation</a>. Helping you build the future.
+</div>
